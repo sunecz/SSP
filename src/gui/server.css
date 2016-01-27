@@ -1,0 +1,7 @@
+.text-area .content {
+	-fx-background-insets: -2;	
+}
+
+.text-area .content {
+	-fx-padding: 5;
+}
