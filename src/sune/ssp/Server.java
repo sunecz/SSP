@@ -2,6 +2,7 @@ package sune.ssp;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -23,7 +24,10 @@ import sune.ssp.data.Message;
 import sune.ssp.data.Status;
 import sune.ssp.data.StatusData;
 import sune.ssp.data.TerminationData;
+import sune.ssp.etc.DataList;
 import sune.ssp.etc.IPAddress;
+import sune.ssp.etc.ListType;
+import sune.ssp.etc.ServerClientInfo;
 import sune.ssp.event.EventRegistry;
 import sune.ssp.event.EventType;
 import sune.ssp.event.Listener;
@@ -106,7 +110,6 @@ public class Server {
 				
 				if(canConnect(ipAddress)) {
 					String clientIP = client.getIP();
-					clients.put(clientIP, client);
 					if(asp != null) {
 						client.setAntiSpamProtection(
 							new AntiSpamProtection(
@@ -114,6 +117,7 @@ public class Server {
 								asp.getMaxAttempts()));
 					}
 					client.send(Status.SUCCESSFULLY_CONNECTED);
+					addClient(clientIP, client);
 					eventRegistry.call(
 						ServerEvent.CLIENT_CONNECTED, client);
 				} else {
@@ -135,7 +139,6 @@ public class Server {
 					synchronized(clients) {
 						String senderIP = data.getSenderIP();
 						for(ServerClient client : clients.values()) {
-							System.out.println(client.getIP() + ", " + senderIP);
 							if(forceSend || !client.getIP().equals(senderIP)) {
 								client.send(data);
 							}
@@ -162,7 +165,7 @@ public class Server {
 								String clientIP 	 = data.getSenderIP();
 								ServerClient sclient = clients.get(clientIP);
 								sclient.close();
-								clients.remove(clientIP);
+								removeClient(clientIP);
 								eventRegistry.call(
 									ServerEvent.CLIENT_DISCONNECTED, sclient);
 								break;
@@ -301,7 +304,7 @@ public class Server {
 		if(clients.containsKey(ipAddress)) {
 			ServerClient client = clients.get(ipAddress);
 			client.close(status);
-			clients.remove(ipAddress);
+			removeClient(ipAddress);
 			eventRegistry.call(
 				ServerEvent.CLIENT_DISCONNECTED, client);
 		}
@@ -336,6 +339,50 @@ public class Server {
 		for(File file : files) {
 			sendFile(file);
 		}
+	}
+	
+	@SuppressWarnings("unchecked")
+	public <T extends Serializable> DataList<T> createList(ListType type) {
+		switch(type) {
+			case CONNECTED_CLIENTS:
+				ServerClientInfo[] array
+					= new ServerClientInfo[clients.size()];
+				int i = 0;
+				for(ServerClient client : clients.values()) {
+					ServerClientInfo data
+						= new ServerClientInfo(
+							client.getIP(),
+							client.getUsername());
+					array[i++] = data;
+				}
+				DataList<ServerClientInfo> list
+					= type.<ServerClientInfo>create(array);
+				list.setItemClass(ServerClientInfo.class);
+				return (DataList<T>) list;
+		}
+		return null;
+	}
+	
+	public void sendList(ListType type) {
+		sendList(createList(type));
+	}
+	
+	public <T extends Serializable> void sendList(DataList<T> list) {
+		if(list == null) {
+			throw new IllegalArgumentException(
+				"Data list cannot be null!");
+		}
+		for(ServerClient client : clients.values()) {
+			sendList(client, list);
+		}
+	}
+	
+	public <T extends Serializable> void sendList(ServerClient client, ListType type) {
+		sendList(client, createList(type));
+	}
+	
+	public <T extends Serializable> void sendList(ServerClient client, DataList<T> list) {
+		client.send(list);
 	}
 	
 	protected void terminateFor(ServerClient client, String fileHash, boolean self) {
@@ -424,6 +471,16 @@ public class Server {
 	public <E> void removeListener(
 			EventType<ServerEvent, E> type, Listener<E> listener) {
 		eventRegistry.remove(type, listener);
+	}
+	
+	void addClient(String clientIP, ServerClient client) {
+		clients.put(clientIP, client);
+		sendList(ListType.CONNECTED_CLIENTS);
+	}
+	
+	void removeClient(String clientIP) {
+		clients.remove(clientIP);
+		sendList(ListType.CONNECTED_CLIENTS);
 	}
 	
 	protected void accept(ServerClient client, String hash) {

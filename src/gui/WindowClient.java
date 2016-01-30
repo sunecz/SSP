@@ -1,11 +1,13 @@
 package gui;
 import java.io.File;
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import javafx.application.Platform;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
@@ -38,6 +40,8 @@ import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.Message;
+import sune.ssp.etc.DataList;
+import sune.ssp.etc.ServerClientInfo;
 import sune.ssp.event.ClientEvent;
 import sune.ssp.file.FileSaver;
 import sune.ssp.file.FileSender;
@@ -82,6 +86,8 @@ public class WindowClient {
 	private ContextMenu menuTransfers;
 	private MenuItem menuItemTerminate;
 	
+	private TableView<ClientTableInfo> tableClients;
+	
 	private Logger logger = new ThreadLogger() {
 		
 		@Override
@@ -112,7 +118,7 @@ public class WindowClient {
 		stage 	= new Stage();
 		pane  	= new BorderPane();
 		mainBox = new VBox(5);
-		scene 	= new Scene(pane, 800, 400);
+		scene 	= new Scene(pane, 1000, 400);
 		scene.getStylesheets().add(
 			Resource.stylesheet("/gui/client.css"));
 		
@@ -120,6 +126,7 @@ public class WindowClient {
 		txtInput  	   = new TextField();
 		btnSend	  	   = new Button("Send");
 		tableTransfers = new TableView<>();
+		tableClients   = new TableView<>();
 		
 		menuBar 		   = new MenuBar();
 		menuClient 		   = new Menu("Client");
@@ -153,6 +160,18 @@ public class WindowClient {
 		menuItemDisconnect.setDisable(true);
 		menuFiles.setDisable(true);
 		
+		TableColumn<ClientTableInfo, String> tc_colAddr = new TableColumn<>("IP address");
+		TableColumn<ClientTableInfo, String> tc_colName = new TableColumn<>("Username");
+		tc_colAddr.setPrefWidth(120.0);
+		tc_colName.setPrefWidth(120.0);
+		tc_colAddr.setCellValueFactory(new PropertyValueFactory<ClientTableInfo, String>("IP"));
+		tc_colName.setCellValueFactory(new PropertyValueFactory<ClientTableInfo, String>("Username"));
+		tableClients.getColumns().addAll(tc_colAddr, tc_colName);
+		tableClients.setSortPolicy((param) -> { return false; });
+		tableClients.setEditable(false);
+		BorderPane.setMargin(tableClients, new Insets(10, 0, 10, 10));
+		tableClients.setPlaceholder(new Label("No connected client."));
+		
 		TableColumn<FileTableInfo, String> tt_colName = new TableColumn<>("File");
 		TableColumn<FileTableInfo, String> tt_colType = new TableColumn<>("Type");
 		TableColumn<FileTableInfo, String> tt_colDesc = new TableColumn<>("Status");
@@ -165,7 +184,7 @@ public class WindowClient {
 		tableTransfers.getColumns().addAll(tt_colName, tt_colType, tt_colDesc);
 		tableTransfers.setSortPolicy((param) -> { return false; });
 		tableTransfers.setEditable(false);
-		BorderPane.setMargin(tableTransfers, new Insets(10, 0, 10, 10));
+		BorderPane.setMargin(tableTransfers, new Insets(10, 10, 10, 0));
 		tableTransfers.setPlaceholder(new Label("No transfer in progress."));
 		
 		fileChooserSend = new FileChooser();
@@ -221,7 +240,8 @@ public class WindowClient {
 		mainBox.getChildren().addAll(txtOutput, box);
 		pane.setCenter(mainBox);
 		pane.setTop(menuBar);
-		pane.setLeft(tableTransfers);
+		pane.setLeft(tableClients);
+		pane.setRight(tableTransfers);
 		
 		try {
 			ipAddress = InetAddress.getLocalHost().getHostAddress();
@@ -257,11 +277,9 @@ public class WindowClient {
 		txtInput.setMinHeight(Region.USE_PREF_SIZE);
 		logger.init();
 		
-		//client = SecureClient.create(ipAddress, PORT);
-		client = SecureClient.create("192.168.1.15", PORT);
+		client = SecureClient.create(ipAddress, PORT);
 		client.setUsername("Sune");
 		client.setPromptToReceiveFile(true);
-		
 		client.addListener(ClientEvent.CONNECTED, (value) -> {
 			Platform.runLater(() -> {
 				menuItemConnect.setDisable(true);
@@ -302,6 +320,8 @@ public class WindowClient {
 			Platform.runLater(() -> {
 				tableTransfers.getItems().clear();
 				tableTransfers.refresh();
+				tableClients.getItems().clear();
+				tableClients.refresh();
 			});
 			logger.logf("Client has been disconnected from %s:%d!", 
 				ipAddress, PORT);
@@ -356,7 +376,14 @@ public class WindowClient {
 			});
 		});
 		client.addListener(ClientEvent.DATA_RECEIVED, (data) -> {
-			if(data instanceof Message) {
+			if(data instanceof DataList) {
+				DataList<?> list   = (DataList<?>) data;
+				Class<?> itemClass = list.getItemClass();
+				if(itemClass == ServerClientInfo.class) {
+					updateClients(
+						(DataList<ServerClientInfo>) list);
+				}
+			} else if(data instanceof Message) {
 				logger.log(Formatter.formatMessage((Message) data));
 			} else if(data instanceof FileInfoData) {
 				FileInfoData fi = (FileInfoData) data;
@@ -470,6 +497,21 @@ public class WindowClient {
 			logger.log(Formatter.formatMessage(message));
 			client.send(message);
 			txtInput.setText("");
+		}
+	}
+	
+	public void updateClients(DataList<ServerClientInfo> list) {
+		ObservableList<ClientTableInfo> tableItems
+			= tableClients.getItems();
+		tableItems.clear();
+		for(Serializable s : list.getData()) {
+			if(s instanceof ServerClientInfo) {
+				ServerClientInfo info
+					= (ServerClientInfo) s;
+				tableItems.add(new ClientTableInfo(
+					info.getIP(),
+					info.getUsername()));
+			}
 		}
 	}
 	

@@ -1,6 +1,7 @@
 package sune.ssp.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -41,10 +42,25 @@ public class Utils {
 		return list;
 	}
 	
-	public static int[] IntegerToInt(Integer[] a) {
-		int[] p = new int[a.length];
-		for(int i = 0, l = a.length; i < l; i++)
-			p[i] = a[i];
-		return p;
+	public static int[] toIntArray(Integer[] a) {
+		int[] arr = new int[a.length];
+		for(int i = 0,
+				l = a.length; i < l; ++i)
+			arr[i] = a[i];
+		return arr;
+	}
+	
+	public static <T> T[] copy(T[] array) {
+		return array == null ? null :
+			Arrays.copyOf(array, array.length);
+	}
+	
+	@SafeVarargs
+	public static <T> List<T> toList(T... array) {
+		List<T> list = new ArrayList<>();
+		for(int i = 0,
+				l = array.length; i < l; ++i)
+			list.add(array[i]);
+		return list;
 	}
 }

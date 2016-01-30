@@ -64,7 +64,7 @@ public class PortUtils {
 			}
 		}
 		
-		return Utils.IntegerToInt(
+		return Utils.toIntArray(
 			ports.toArray(new Integer[ports.size()]));
 	}
 	

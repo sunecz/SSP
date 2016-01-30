@@ -1,6 +1,7 @@
 package sune.ssp.data;
 
 import java.io.Serializable;
+import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +22,8 @@ public class Data implements Serializable, Comparable<Object> {
 	private static final Map<String, Object> mk_propMap(Object... values) {
 		if((values.length & 1) == 1) {
 			throw new IllegalArgumentException(
-				"Number of values is incorrect! Should be even.");
+				"Number of values should be even! Every name " +
+				"needs its value.");
 		}
 		
 		String key = null;
@@ -56,12 +58,18 @@ public class Data implements Serializable, Comparable<Object> {
 		this.values = values;
 	}
 	
-	protected void setSenderIP(String senderIP) {
+	void setSenderIP(String senderIP) {
 		values.put(PROPERTY_SENDERIP, senderIP);
 	}
 	
-	protected void setDateTime(String dateTime) {
+	void setDateTime(String dateTime) {
 		values.put(PROPERTY_DATETIME, dateTime);
+	}
+	
+	protected void setData(String name, Object value) {
+		if(values.containsKey(name)) {
+			values.put(name, value);
+		}
 	}
 	
 	public Object getData(String name) {
@@ -76,7 +84,7 @@ public class Data implements Serializable, Comparable<Object> {
 		return new Value(getData(PROPERTY_DATETIME)).stringValue();
 	}
 	
-	protected Map<String, Object> getPropMap() {
+	Map<String, Object> getPropMap() {
 		return values;
 	}
 	
@@ -101,7 +109,7 @@ public class Data implements Serializable, Comparable<Object> {
 	@SuppressWarnings("unchecked")
 	public String toString() {
 		return String.format(
-			"Transferable data (type=%s,size=%d)",
+			"Transferable data (type=%s, size=%d)",
 			((Class<? extends Data>) values.get(PROPERTY_CLASS)).getName(),
 			values.size());
 	}
@@ -119,6 +127,7 @@ public class Data implements Serializable, Comparable<Object> {
 		return cast(this, clazz);
 	}
 	
+	@SuppressWarnings("unchecked")
 	private static final <T extends Data> T cast(Data data, Class<T> clazz) {
 		try {
 			Map<String, Object> map = data.getPropMap();
@@ -134,14 +143,15 @@ public class Data implements Serializable, Comparable<Object> {
 			
 			Object[] values    = list.toArray();
 			Class<?>[] classes = TypeUtils.recognizeClasses(values);
-			T instance 		   = (T) clazz.getConstructor(classes).newInstance(values);
+			Constructor<?> cst = clazz.getDeclaredConstructor(classes);
+			// Make it accessible so all constructors can be used
+			cst.setAccessible(true);
+			T instance 		   = (T) cst.newInstance(values);
 			instance.setSenderIP(data.getSenderIP());
 			instance.setDateTime(data.getDateTime());
 			return instance;
 		} catch(Exception ex) {
-			ex.printStackTrace();
 		}
-		
-		return null;
+		return (T) data;
 	}
 }

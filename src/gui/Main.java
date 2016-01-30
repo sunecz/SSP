@@ -11,7 +11,7 @@ public class Main extends Application {
 	
 	@Override
 	public void start(Stage primaryStage) throws Exception {
-		//if(SERVER) new WindowServer();
+		if(SERVER) new WindowServer();
 		if(CLIENT) new WindowClient();
 	}
 	

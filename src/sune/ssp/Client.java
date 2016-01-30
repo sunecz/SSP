@@ -118,7 +118,6 @@ public class Client {
 							writer.flush();
 						} catch(Exception ex) {
 						}
-						
 						sent = true;
 					}
 				}

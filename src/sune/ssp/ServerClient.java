@@ -69,7 +69,6 @@ public class ServerClient {
 							writer.flush();
 						} catch(Exception ex) {
 						}
-						
 						sent = true;
 					}
 				}

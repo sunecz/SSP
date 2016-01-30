@@ -61,10 +61,10 @@ public abstract class ThreadLogger implements Logger {
 	}
 	
 	public void logerrf(String string, Object... args) {
-		addLog(string);
+		addLog(String.format(string, args));
 	}
 	
 	public void logf(String string, Object... args) {
-		addLog(string);
+		addLog(String.format(string, args));
 	}
 }
