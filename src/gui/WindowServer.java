@@ -6,6 +6,7 @@ import java.util.Map;
 
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContextMenu;
@@ -19,6 +20,7 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
@@ -32,6 +34,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
@@ -43,13 +46,17 @@ import sune.ssp.logger.Logger;
 import sune.ssp.logger.ThreadLogger;
 import sune.ssp.secure.SecureServer;
 import sune.ssp.util.Formatter;
+import sune.ssp.util.PortUtils;
 import sune.ssp.util.Resource;
 import sune.ssp.util.Utils;
 import sune.test.matrix.Matrix;
 
 public class WindowServer {
 	
-	private static final int PORT = 2400;
+	private static final String WINDOW_TITLE = "SSP Server (Simple-Protocol Test; Secure (TSL))";
+	private static final Image 	WINDOW_ICON  = Resource.image("/gui/icon.png");
+	private static final String DEFAULT_ADDR = PortUtils.getIpAddress();
+	private static final int 	DEFAULT_PORT = 2400;
 	private SecureServer server;
 	
 	private Stage stage;
@@ -106,6 +113,10 @@ public class WindowServer {
 			addLog("[ERROR] " + String.format(string, args) + "\n");
 		}
 	};
+	
+	private boolean correctlyPressed;
+	private String selectedIPAddress = DEFAULT_ADDR;
+	private int selectedPort 		 = DEFAULT_PORT;
 	
 	@SuppressWarnings("unchecked")
 	public WindowServer() {
@@ -289,8 +300,8 @@ public class WindowServer {
 		
 		mainBox.setPadding(new Insets(10));
 		stage.setScene(scene);
-		stage.setTitle("SSP Server (Simple-Protocol Test; Secure (TSL))");
-		stage.getIcons().add(Resource.image("/gui/icon.png"));
+		stage.setTitle(WINDOW_TITLE);
+		stage.getIcons().add(WINDOW_ICON);
 		stage.setOnCloseRequest((event) -> stop());
 		stage.setResizable(false);
 		stage.centerOnScreen();
@@ -301,7 +312,69 @@ public class WindowServer {
 		txtInput.setMinHeight(Region.USE_PREF_SIZE);
 		logger.init();
 		
-		server = SecureServer.create(PORT, "somerandompassword");
+		if(showStartupDialog()) start(selectedPort);
+		else 					stop();
+	}
+	
+	public boolean showStartupDialog() {
+		correctlyPressed = false;
+		Stage stage   	= new Stage();
+		GridPane pane 	= new GridPane();
+		Scene scene   	= new Scene(pane, 300, 120);
+		HBox boxBottom 	= new HBox(5);
+		
+		Label lblIPAddr 	= new Label("IP Address");
+		Label lblPort 		= new Label("Port");
+		TextField txtIPAddr = new TextField();
+		TextField txtPort 	= new TextField();
+		Button btnStart		= new Button("Start");
+		
+		txtIPAddr.setText(selectedIPAddress);
+		txtPort.setText(Integer.toString(selectedPort));
+		
+		txtIPAddr.setDisable(true);
+		btnStart.setOnAction((event) -> {
+			String text = txtPort.getText();
+			if(text != null && !text.isEmpty()) {
+				selectedPort 	 = Integer.parseInt(text);
+				correctlyPressed = true;
+				stage.close();
+			}
+		});
+		
+		boxBottom.getChildren().addAll(btnStart);
+		boxBottom.setAlignment(Pos.BOTTOM_RIGHT);
+		pane.setPadding(new Insets(10));
+		pane.getChildren().addAll(
+			lblIPAddr, txtIPAddr, lblPort, txtPort,
+			boxBottom);
+		GridPane.setConstraints(lblIPAddr, 0, 0);
+		GridPane.setConstraints(txtIPAddr, 1, 0);
+		GridPane.setConstraints(lblPort, 0, 1);
+		GridPane.setConstraints(txtPort, 1, 1);
+		GridPane.setConstraints(boxBottom, 0, 2, 2, 1);
+		GridPane.setHgrow(txtIPAddr, Priority.ALWAYS);
+		GridPane.setHgrow(txtPort, Priority.ALWAYS);
+		GridPane.setHgrow(boxBottom, Priority.ALWAYS);
+		GridPane.setVgrow(boxBottom, Priority.ALWAYS);
+		GridPane.setMargin(lblIPAddr, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(txtIPAddr, new Insets(0, 0, 5, 0));
+		GridPane.setMargin(lblPort, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(txtPort, new Insets(0, 0, 5, 0));
+		
+		stage.setScene(scene);
+		stage.setTitle("Start server");
+		stage.getIcons().add(WINDOW_ICON);
+		stage.setResizable(false);
+		stage.initModality(Modality.WINDOW_MODAL);
+		stage.initOwner(this.stage);
+		stage.centerOnScreen();
+		stage.showAndWait();
+		return correctlyPressed;
+	}
+	
+	public void start(int port) {
+		server = SecureServer.create(port, "somerandompassword");
 		server.addListener(ServerEvent.CLIENT_CONNECTED, (client) -> {
 			String clientIP			   = client.getIP();
 			ClientTableInfo clientInfo = new ClientTableInfo(
@@ -487,5 +560,6 @@ public class WindowServer {
 		if(server != null) server.stop();
 		if(logger != null) logger.dispose();
 		if(matrix != null) matrix.stop();
+		if(stage  != null) stage.close();
 	}
 }

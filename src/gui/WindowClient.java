@@ -1,7 +1,6 @@
 package gui;
 import java.io.File;
 import java.io.Serializable;
-import java.net.InetAddress;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +8,7 @@ import java.util.Map;
 import javafx.application.Platform;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
@@ -23,11 +23,13 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -35,6 +37,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
+import javafx.stage.Modality;
 import javafx.stage.Stage;
 import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
@@ -51,14 +54,17 @@ import sune.ssp.logger.ThreadLogger;
 import sune.ssp.secure.SecureClient;
 import sune.ssp.util.Dialog;
 import sune.ssp.util.Formatter;
+import sune.ssp.util.PortUtils;
 import sune.ssp.util.Resource;
 import sune.ssp.util.Utils;
 import sune.ssp.util.Waiter;
 
 public class WindowClient {
 	
-	private static final int PORT = 2400;
-	private String ipAddress;
+	private static final String WINDOW_TITLE = "SSP Client (Simple-Protocol Test; Secure (TSL))";
+	private static final Image 	WINDOW_ICON  = Resource.image("/gui/icon.png");
+	private static final String DEFAULT_ADDR = PortUtils.getIpAddress();
+	private static final int 	DEFAULT_PORT = 2400;
 	private SecureClient client;
 	
 	private Stage stage;
@@ -113,6 +119,10 @@ public class WindowClient {
 		}
 	};
 	
+	private boolean correctlyPressed;
+	private String selectedIPAddress = DEFAULT_ADDR;
+	private int selectedPort 		 = DEFAULT_PORT;
+	
 	@SuppressWarnings("unchecked")
 	public WindowClient() {
 		stage 	= new Stage();
@@ -137,9 +147,11 @@ public class WindowClient {
 		
 		menuItemConnect.setOnAction((event) -> {
 			new Thread(() -> {
-				logger.logf("Connecting to %s:%d...",
-					ipAddress, PORT);
-				client.connect();
+				Platform.runLater(() -> {
+					if(showStartupDialog()) {
+						start(selectedIPAddress, selectedPort);
+					}
+				});
 			}).start();
 		});
 		menuItemDisconnect.setOnAction((event) -> client.disconnect());
@@ -243,11 +255,6 @@ public class WindowClient {
 		pane.setLeft(tableClients);
 		pane.setRight(tableTransfers);
 		
-		try {
-			ipAddress = InetAddress.getLocalHost().getHostAddress();
-		} catch(Exception ex) {
-		}
-		
 		btnSend.setOnAction((event) -> sendMessage());
 		txtInput.addEventHandler(KeyEvent.KEY_PRESSED, (event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
@@ -265,8 +272,8 @@ public class WindowClient {
 		
 		mainBox.setPadding(new Insets(10));
 		stage.setScene(scene);
-		stage.setTitle("SSP Client (Simple-Protocol Test; Secure (TSL))");
-		stage.getIcons().add(Resource.image("/gui/icon.png"));
+		stage.setTitle(WINDOW_TITLE);
+		stage.getIcons().add(WINDOW_ICON);
 		stage.setOnCloseRequest((event) -> stop());
 		stage.setResizable(false);
 		stage.centerOnScreen();
@@ -277,7 +284,69 @@ public class WindowClient {
 		txtInput.setMinHeight(Region.USE_PREF_SIZE);
 		logger.init();
 		
-		client = SecureClient.create(ipAddress, PORT);
+		if(showStartupDialog()) start(selectedIPAddress, selectedPort);
+		else 					stop();
+	}
+	
+	public boolean showStartupDialog() {
+		correctlyPressed = false;		
+		Stage stage   	= new Stage();
+		GridPane pane 	= new GridPane();
+		Scene scene   	= new Scene(pane, 300, 120);
+		HBox boxBottom 	= new HBox(5);
+		
+		Label lblIPAddr 	= new Label("IP Address");
+		Label lblPort 		= new Label("Port");
+		TextField txtIPAddr = new TextField();
+		TextField txtPort 	= new TextField();
+		Button btnStart		= new Button("Connect");
+		
+		txtIPAddr.setText(selectedIPAddress);
+		txtPort.setText(Integer.toString(selectedPort));
+		
+		btnStart.setOnAction((event) -> {
+			String text = txtPort.getText();
+			if(text != null && !text.isEmpty()) {
+				selectedPort 	 = Integer.parseInt(text);
+				correctlyPressed = true;
+				stage.close();
+			}
+		});
+		
+		boxBottom.getChildren().addAll(btnStart);
+		boxBottom.setAlignment(Pos.BOTTOM_RIGHT);
+		pane.setPadding(new Insets(10));
+		pane.getChildren().addAll(
+			lblIPAddr, txtIPAddr, lblPort, txtPort,
+			boxBottom);
+		GridPane.setConstraints(lblIPAddr, 0, 0);
+		GridPane.setConstraints(txtIPAddr, 1, 0);
+		GridPane.setConstraints(lblPort, 0, 1);
+		GridPane.setConstraints(txtPort, 1, 1);
+		GridPane.setConstraints(boxBottom, 0, 2, 2, 1);
+		GridPane.setHgrow(txtIPAddr, Priority.ALWAYS);
+		GridPane.setHgrow(txtPort, Priority.ALWAYS);
+		GridPane.setHgrow(boxBottom, Priority.ALWAYS);
+		GridPane.setVgrow(boxBottom, Priority.ALWAYS);
+		GridPane.setMargin(lblIPAddr, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(txtIPAddr, new Insets(0, 0, 5, 0));
+		GridPane.setMargin(lblPort, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(txtPort, new Insets(0, 0, 5, 0));
+		
+		stage.setScene(scene);
+		stage.setTitle("Connect client");
+		stage.getIcons().add(WINDOW_ICON);
+		stage.setResizable(false);
+		stage.initModality(Modality.WINDOW_MODAL);
+		stage.initOwner(this.stage);
+		stage.centerOnScreen();
+		stage.showAndWait();
+		return correctlyPressed;
+	}
+	
+	@SuppressWarnings("unchecked")
+	public void start(String ipAddress, int port) {
+		client = SecureClient.create(ipAddress, port);
 		client.setUsername("Sune");
 		client.setPromptToReceiveFile(true);
 		client.addListener(ClientEvent.CONNECTED, (value) -> {
@@ -287,7 +356,7 @@ public class WindowClient {
 				menuFiles.setDisable(false);
 			});
 			logger.logf("Client has been connected to %s:%d!",
-				ipAddress, PORT);
+				ipAddress, port);
 		});
 		client.addListener(ClientEvent.ALREADY_CONNECTED, (value) -> {
 			Platform.runLater(() -> {
@@ -304,11 +373,11 @@ public class WindowClient {
 				menuFiles.setDisable(true);
 			});
 			logger.logerrf("Timed out while connecting to server %s:%d!",
-				ipAddress, PORT);
+				ipAddress, port);
 		});
 		client.addListener(ClientEvent.CANNOT_CONNECT, (value) -> {
 			logger.logerrf("Cannot connect to server %s:%d!",
-				ipAddress, PORT);
+				ipAddress, port);
 		});
 		client.addListener(ClientEvent.DISCONNECTED, (value) -> {
 			Platform.runLater(() -> {
@@ -324,11 +393,11 @@ public class WindowClient {
 				tableClients.refresh();
 			});
 			logger.logf("Client has been disconnected from %s:%d!", 
-				ipAddress, PORT);
+				ipAddress, port);
 		});
 		client.addListener(ClientEvent.CANNOT_DISCONNECT, (value) -> {
 			logger.logerrf("Cannot disconnect from %s:%d!", 
-				ipAddress, PORT);
+				ipAddress, port);
 		});
 		client.addListener(ClientEvent.PROMPT_RECEIVE_FILE, (dataWaiter) -> {
 			Platform.runLater(() -> {
@@ -380,8 +449,7 @@ public class WindowClient {
 				DataList<?> list   = (DataList<?>) data;
 				Class<?> itemClass = list.getItemClass();
 				if(itemClass == ServerClientInfo.class) {
-					updateClients(
-						(DataList<ServerClientInfo>) list);
+					updateClients((DataList<ServerClientInfo>) list);
 				}
 			} else if(data instanceof Message) {
 				logger.log(Formatter.formatMessage((Message) data));
@@ -482,7 +550,7 @@ public class WindowClient {
 		});
 		new Thread(() -> {
 			logger.logf("Connecting to %s:%d...",
-				ipAddress, PORT);
+				ipAddress, port);
 			client.connect();
 		}).start();
 	}
@@ -518,5 +586,6 @@ public class WindowClient {
 	public void stop() {
 		if(client != null) client.disconnect();
 		if(logger != null) logger.dispose();
+		if(stage  != null) stage.close();
 	}
 }
