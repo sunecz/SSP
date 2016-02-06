@@ -242,6 +242,13 @@ public class Server {
 		return new ServerClient(this, socket);
 	}
 	
+	protected void addDataToSend(Data data, String senderIP) {
+		synchronized(dataToSend) {
+			dataToSend.add(FinalData.create(
+				senderIP, data));
+		}
+	}
+	
 	public void start() {
 		if(running) return;
 		
@@ -315,10 +322,7 @@ public class Server {
 	}
 	
 	protected void send(Data data, String senderIP) {
-		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(
-				senderIP, data));
-		}
+		addDataToSend(data, senderIP);
 	}
 	
 	public void send(Status status) {
@@ -501,6 +505,10 @@ public class Server {
 		 * more than once onto the localhost server.*/
 		return ipAddress == getIP() ||
 			   !clients.containsKey(ipAddress);
+	}
+	
+	protected ServerClient getClient(String ipAddress) {
+		return clients.get(ipAddress);
 	}
 	
 	private void createFileSenders(File file) {

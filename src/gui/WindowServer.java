@@ -341,6 +341,11 @@ public class WindowServer {
 				stage.close();
 			}
 		});
+		btnStart.setOnKeyPressed((event) -> {
+			if(event.getCode() == KeyCode.ENTER) {
+				btnStart.getOnAction().handle(null);
+			}
+		});
 		
 		boxBottom.getChildren().addAll(btnStart);
 		boxBottom.setAlignment(Pos.BOTTOM_RIGHT);
@@ -361,6 +366,7 @@ public class WindowServer {
 		GridPane.setMargin(txtIPAddr, new Insets(0, 0, 5, 0));
 		GridPane.setMargin(lblPort, new Insets(0, 15, 5, 0));
 		GridPane.setMargin(txtPort, new Insets(0, 0, 5, 0));
+		btnStart.requestFocus();
 		
 		stage.setScene(scene);
 		stage.setTitle("Start server");

@@ -70,4 +70,8 @@ public final class FinalData implements Serializable, Comparable<Object> {
 	public static final FinalData create(String senderIP, Data data) {
 		return new FinalData(data.getPropMap(), senderIP);
 	}
+	
+	public static final FinalData create(FinalData fdata, Data data) {
+		return new FinalData(data.getPropMap(), fdata.senderIP, fdata.dateTime);
+	}
 }

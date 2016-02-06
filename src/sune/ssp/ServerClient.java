@@ -32,7 +32,7 @@ import sune.ssp.util.Utils;
 
 public class ServerClient {
 	
-	private Server server;
+	protected Server server;
 	private String username;
 	private Connection connection;
 	
@@ -112,6 +112,11 @@ public class ServerClient {
 								break;
 							}
 							
+							Data prevData = data;
+							if((data = preProcessData(data)) != prevData) {
+								fdata = FinalData.create(fdata, data);
+							}
+							
 							if(data instanceof FileInfoData) {
 								FileInfoData fi = (FileInfoData) data;
 								String hash 	= fi.getHash();
@@ -150,15 +155,16 @@ public class ServerClient {
 								else 				 server.accept(this, ad.getHash());
 							}
 							
-							synchronized(dataProcessed) {
-								dataProcessed.add(fdata);
+							if(onDataReceived(data)) {
+								synchronized(dataProcessed) {
+									dataProcessed.add(fdata);
+								}
 							}
 						}
 					} catch(Exception ex) {
 					}
 				}
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -212,6 +218,14 @@ public class ServerClient {
 			}
 		} catch(Exception ex) {
 		}
+	}
+	
+	protected boolean onDataReceived(Data data) {
+		return true;
+	}
+	
+	protected Data preProcessData(Data data) {
+		return data;
 	}
 	
 	public void close() {

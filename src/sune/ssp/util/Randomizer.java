@@ -35,4 +35,45 @@ public final class Randomizer {
 	public static final int nextInt() {
 		return createSecure().nextInt();
 	}
+	
+	public static final SecureRandom createSecureSHA1() {
+		try {
+			SecureRandom random
+				= SecureRandom.getInstance(
+					"SHA1PRNG", "SUN");
+			random.setSeed(uniqueSeed(RANDOM));
+			return random;
+		} catch(Exception ex) {
+		}
+		return null;
+	}
+	
+	public static final SecureRandom createSecureStrong() {
+		try {
+			SecureRandom random
+				= SecureRandom.getInstanceStrong();
+			random.setSeed(uniqueSeed(RANDOM));
+			return random;
+		} catch(Exception ex) {
+		}
+		return null;
+	}
+	
+	static final String 	  STRING 		= "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+	static final int		  STRING_MAX	= STRING.length();
+	static final SecureRandom STRING_RANDOM = createSecure();
+	static final char randomCharacter(SecureRandom random) {
+		return STRING.charAt(random.nextInt(STRING_MAX));
+	}
+	
+	public static final String randomString(int length, SecureRandom random) {
+		StringBuilder sb = new StringBuilder();
+		for(int i = 0; i < length; ++i)
+			sb.append(randomCharacter(random));
+		return sb.toString();
+	}
+	
+	public static final String randomString(int length) {
+		return randomString(length, STRING_RANDOM);
+	}
 }

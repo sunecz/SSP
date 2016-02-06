@@ -153,7 +153,7 @@ public class Client {
 					try {
 						FinalData fdata;
 						if((fdata = dataReceived.poll()) != null) {
-							Data data = fdata.toData().cast();
+							Data data = onDataReceived(fdata.toData().cast());
 							if(data instanceof StatusData) {
 								Status status = ((StatusData) data).getStatus();
 								switch(status) {
@@ -316,6 +316,16 @@ public class Client {
 		return socket;
 	}
 	
+	protected void addDataToSend(Data data) {
+		synchronized(dataToSend) {
+			dataToSend.add(FinalData.create(getIP(), data));
+		}
+	}
+	
+	protected Data onDataReceived(Data data) {
+		return data;
+	}
+	
 	/**
 	 * Connects this client to the server.*/
 	public void connect() {
@@ -424,9 +434,7 @@ public class Client {
 	 * Sends a data to the server.
 	 * @param data The data to be sent*/
 	public void send(Data data) {
-		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(getIP(), data));
-		}
+		addDataToSend(data);
 	}
 	
 	/**
