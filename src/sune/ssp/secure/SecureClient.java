@@ -42,15 +42,15 @@ public class SecureClient extends Client {
 	protected Socket createSocket(String serverIP, int serverPort)
 			throws UnknownHostException, IOException {
 		SSLSocket socket = SecurityHelper.createClient(serverIP, serverPort);
-		socket.setSoTimeout(8000);
+		socket.setSoTimeout(TIMEOUT);
 		socket.startHandshake();
 		return socket;
 	}
 	
 	@Override
-	protected void addDataToSend(Data data) {
+	protected void addDataToSend(Data data, String receiver) {
 		if(data instanceof PublicKeyData) {
-			super.addDataToSend(data);
+			super.addDataToSend(data, receiver);
 		} else {
 			super.addDataToSend(
 				isConnected() &&
@@ -58,7 +58,8 @@ public class SecureClient extends Client {
 					new CryptedData(
 						symmetricKey,
 						data) :
-					data);
+					data,
+				receiver);
 		}
 	}
 	

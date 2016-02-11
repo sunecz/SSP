@@ -32,8 +32,18 @@ public final class Randomizer {
 		return createSecure().nextLong();
 	}
 	
+	public static final long nextPositiveLong() {
+		// Mask the long without the sign bit
+		return createSecure().nextLong() & 0x7ffffffffffffffL;
+	}
+	
 	public static final int nextInt() {
 		return createSecure().nextInt();
+	}
+	
+	public static final int nextPositiveInt() {
+		// Mask the integer without the sign bit
+		return createSecure().nextInt() & 0x7fffffff;
 	}
 	
 	public static final SecureRandom createSecureSHA1() {

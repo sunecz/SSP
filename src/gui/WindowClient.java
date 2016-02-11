@@ -28,13 +28,20 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.Border;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.BorderStroke;
+import javafx.scene.layout.BorderStrokeStyle;
+import javafx.scene.layout.BorderWidths;
+import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
 import javafx.stage.Modality;
@@ -55,16 +62,19 @@ import sune.ssp.secure.SecureClient;
 import sune.ssp.util.Dialog;
 import sune.ssp.util.Formatter;
 import sune.ssp.util.PortUtils;
+import sune.ssp.util.Randomizer;
 import sune.ssp.util.Resource;
 import sune.ssp.util.Utils;
 import sune.ssp.util.Waiter;
 
 public class WindowClient {
 	
-	private static final String WINDOW_TITLE = "SSP Client (Simple-Protocol Test; Secure (TSL))";
-	private static final Image 	WINDOW_ICON  = Resource.image("/gui/icon.png");
-	private static final String DEFAULT_ADDR = PortUtils.getIpAddress();
-	private static final int 	DEFAULT_PORT = 2400;
+	private static final String WINDOW_TITLE 	 = "SSP Client (Simple-Protocol Test; Secure (TSL) & Encrypted (AES 128bit))";
+	private static final Image 	WINDOW_ICON  	 = Resource.image("/gui/icon.png");
+	private static final String DEFAULT_ADDR 	 = PortUtils.getLocalIpAddress();
+	private static final int 	DEFAULT_PORT 	 = 2400;
+	private static final int 	DEFAULT_TIMEOUT  = 8000;
+	private static final String DEFAULT_USERNAME = "username" + Randomizer.nextPositiveLong();
 	private SecureClient client;
 	
 	private Stage stage;
@@ -122,6 +132,8 @@ public class WindowClient {
 	private boolean correctlyPressed;
 	private String selectedIPAddress = DEFAULT_ADDR;
 	private int selectedPort 		 = DEFAULT_PORT;
+	private int selectedTimeout		 = DEFAULT_TIMEOUT;
+	private String selectedUsername	 = DEFAULT_USERNAME;
 	
 	@SuppressWarnings("unchecked")
 	public WindowClient() {
@@ -292,29 +304,69 @@ public class WindowClient {
 		correctlyPressed = false;		
 		Stage stage   	= new Stage();
 		GridPane pane 	= new GridPane();
-		Scene scene   	= new Scene(pane, 300, 120);
+		Scene scene   	= new Scene(pane, 300, 150);
 		HBox boxBottom 	= new HBox(5);
 		
-		Label lblIPAddr 	= new Label("IP Address");
-		Label lblPort 		= new Label("Port");
-		TextField txtIPAddr = new TextField();
-		TextField txtPort 	= new TextField();
-		Button btnStart		= new Button("Connect");
+		Label lblIPAddr 	  = new Label("IP Address");
+		Label lblPort 		  = new Label("Port");
+		Label lblTimeout	  = new Label("Timeout");
+		Label lblUsername	  = new Label("Username");
+		TextField txtIPAddr   = new TextField();
+		TextField txtPort 	  = new TextField();
+		TextField txtUsername = new TextField();
+		MouseSlider timeout   = new MouseSlider(0, 32000);
+		Button btnStart		  = new Button("Connect");
 		
 		txtIPAddr.setText(selectedIPAddress);
 		txtPort.setText(Integer.toString(selectedPort));
+		txtUsername.setText(selectedUsername);
+		timeout.setValue(selectedTimeout);
+		timeout.setFont(Font.font("Consolas", FontWeight.BOLD, 12));
+		timeout.setValueFormat("%.0f");
+		timeout.setPadding(new Insets(-1));
+		timeout.setBorder(new Border(new BorderStroke(
+			Color.GRAY, BorderStrokeStyle.SOLID,
+			CornerRadii.EMPTY, new BorderWidths(1))));
+		timeout.setForegroundMargin(new Insets(1));
 		
-		btnStart.setOnAction((event) -> {
-			String text = txtPort.getText();
-			if(text != null && !text.isEmpty()) {
-				selectedPort 	 = Integer.parseInt(text);
-				correctlyPressed = true;
-				stage.close();
+		class ActionStart {
+			
+			public void handle() {
+				String textIP		= txtIPAddr.getText();
+				String textPort 	= txtPort.getText();
+				String textUsername = txtUsername.getText();
+				if(textIP 		!= null && !textIP.isEmpty()   &&
+				   textPort 	!= null && !textPort.isEmpty() &&
+				   textUsername != null && !textUsername.isEmpty()) {
+					selectedIPAddress = textIP;
+					selectedPort 	  = Integer.parseInt(textPort);
+					selectedTimeout	  = (int) timeout.getValue();
+					selectedUsername  = textUsername;
+					correctlyPressed  = true;
+					stage.close();
+				}
 			}
-		});
+		}
+		ActionStart action = new ActionStart();
+		btnStart.setOnAction((event) -> action.handle());
 		btnStart.setOnKeyPressed((event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
-				btnStart.getOnAction().handle(null);
+				action.handle();
+			}
+		});
+		txtIPAddr.setOnKeyPressed((event) -> {
+			if(event.getCode() == KeyCode.ENTER) {
+				action.handle();
+			}
+		});
+		txtPort.setOnKeyPressed((event) -> {
+			if(event.getCode() == KeyCode.ENTER) {
+				action.handle();
+			}
+		});
+		txtUsername.setOnKeyPressed((event) -> {
+			if(event.getCode() == KeyCode.ENTER) {
+				action.handle();
 			}
 		});
 		
@@ -323,12 +375,17 @@ public class WindowClient {
 		pane.setPadding(new Insets(10));
 		pane.getChildren().addAll(
 			lblIPAddr, txtIPAddr, lblPort, txtPort,
+			lblTimeout, timeout, lblUsername, txtUsername,
 			boxBottom);
 		GridPane.setConstraints(lblIPAddr, 0, 0);
 		GridPane.setConstraints(txtIPAddr, 1, 0);
 		GridPane.setConstraints(lblPort, 0, 1);
 		GridPane.setConstraints(txtPort, 1, 1);
-		GridPane.setConstraints(boxBottom, 0, 2, 2, 1);
+		GridPane.setConstraints(lblTimeout, 0, 2);
+		GridPane.setConstraints(timeout, 1, 2);
+		GridPane.setConstraints(lblUsername, 0, 3);
+		GridPane.setConstraints(txtUsername, 1, 3);
+		GridPane.setConstraints(boxBottom, 0, 4, 2, 1);
 		GridPane.setHgrow(txtIPAddr, Priority.ALWAYS);
 		GridPane.setHgrow(txtPort, Priority.ALWAYS);
 		GridPane.setHgrow(boxBottom, Priority.ALWAYS);
@@ -337,6 +394,10 @@ public class WindowClient {
 		GridPane.setMargin(txtIPAddr, new Insets(0, 0, 5, 0));
 		GridPane.setMargin(lblPort, new Insets(0, 15, 5, 0));
 		GridPane.setMargin(txtPort, new Insets(0, 0, 5, 0));
+		GridPane.setMargin(lblTimeout, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(timeout, new Insets(0, 0, 5, 0));
+		GridPane.setMargin(lblUsername, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(txtUsername, new Insets(0, 0, 5, 0));
 		btnStart.requestFocus();
 		
 		stage.setScene(scene);
@@ -353,7 +414,7 @@ public class WindowClient {
 	@SuppressWarnings("unchecked")
 	public void start(String ipAddress, int port) {
 		client = SecureClient.create(ipAddress, port);
-		client.setUsername("Sune");
+		client.setUsername(selectedUsername);
 		client.setPromptToReceiveFile(true);
 		client.addListener(ClientEvent.CONNECTED, (value) -> {
 			Platform.runLater(() -> {
@@ -554,6 +615,7 @@ public class WindowClient {
 			logger.logf("File sending %s has been terminated by server!",
 				value.getFile().getName());
 		});
+		client.setTimeout(selectedTimeout);
 		new Thread(() -> {
 			logger.logf("Connecting to %s:%d...",
 				ipAddress, port);

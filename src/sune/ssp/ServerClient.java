@@ -32,6 +32,8 @@ import sune.ssp.util.Utils;
 
 public class ServerClient {
 	
+	private static final String RECEIVER_ALL = "";
+	
 	protected Server server;
 	private String username;
 	private Connection connection;
@@ -105,16 +107,19 @@ public class ServerClient {
 						FinalData fdata;
 						if((fdata = dataReceived.poll()) != null) {
 							Data data = fdata.toData().cast();
-							// ~ Anti-spam protection
+							
+							// Pre-process the data.
+							// Used for various ServerClient implementations.
+							Data prevData = data;
+							if((data = preProcessData(data)) != prevData) {
+								fdata = FinalData.create(fdata, data);
+							}
+							
+							// Anti-spam protection
 							if(asp != null && asp.check(data)) {
 								server.disconnect(
 									getIP(), Status.DISCONNECTED_BY_SPAM);
 								break;
-							}
-							
-							Data prevData = data;
-							if((data = preProcessData(data)) != prevData) {
-								fdata = FinalData.create(fdata, data);
 							}
 							
 							if(data instanceof FileInfoData) {
@@ -266,7 +271,11 @@ public class ServerClient {
 	}
 	
 	public void send(Data data) {
-		send(FinalData.create(server.getServerName(), data));
+		send(data, RECEIVER_ALL);
+	}
+	
+	public void send(Data data, String receiver) {
+		send(FinalData.create(server.getServerName(), receiver, data));
 	}
 	
 	public void send(FinalData data) {

@@ -25,13 +25,20 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.Border;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.BorderStroke;
+import javafx.scene.layout.BorderStrokeStyle;
+import javafx.scene.layout.BorderWidths;
+import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
 import javafx.stage.Modality;
@@ -45,6 +52,7 @@ import sune.ssp.file.TransferType;
 import sune.ssp.logger.Logger;
 import sune.ssp.logger.ThreadLogger;
 import sune.ssp.secure.SecureServer;
+import sune.ssp.util.AntiSpamProtection;
 import sune.ssp.util.Formatter;
 import sune.ssp.util.PortUtils;
 import sune.ssp.util.Resource;
@@ -53,10 +61,11 @@ import sune.test.matrix.Matrix;
 
 public class WindowServer {
 	
-	private static final String WINDOW_TITLE = "SSP Server (Simple-Protocol Test; Secure (TSL))";
-	private static final Image 	WINDOW_ICON  = Resource.image("/gui/icon.png");
-	private static final String DEFAULT_ADDR = PortUtils.getIpAddress();
-	private static final int 	DEFAULT_PORT = 2400;
+	private static final String WINDOW_TITLE 	= "SSP Server (Simple-Protocol Test; Secure (TSL) & Encrypted (AES 128bit))";
+	private static final Image 	WINDOW_ICON  	= Resource.image("/gui/icon.png");
+	private static final String DEFAULT_ADDR 	= PortUtils.getLocalIpAddress();
+	private static final int 	DEFAULT_PORT 	= 2400;
+	private static final int 	DEFAULT_TIMEOUT = 8000;
 	private SecureServer server;
 	
 	private Stage stage;
@@ -117,6 +126,7 @@ public class WindowServer {
 	private boolean correctlyPressed;
 	private String selectedIPAddress = DEFAULT_ADDR;
 	private int selectedPort 		 = DEFAULT_PORT;
+	private int selectedTimeout		 = DEFAULT_TIMEOUT;
 	
 	@SuppressWarnings("unchecked")
 	public WindowServer() {
@@ -325,25 +335,54 @@ public class WindowServer {
 		
 		Label lblIPAddr 	= new Label("IP Address");
 		Label lblPort 		= new Label("Port");
+		Label lblTimeout	= new Label("Timeout");
 		TextField txtIPAddr = new TextField();
 		TextField txtPort 	= new TextField();
+		MouseSlider timeout = new MouseSlider(0, 32000);
 		Button btnStart		= new Button("Start");
 		
 		txtIPAddr.setText(selectedIPAddress);
 		txtPort.setText(Integer.toString(selectedPort));
-		
 		txtIPAddr.setDisable(true);
-		btnStart.setOnAction((event) -> {
-			String text = txtPort.getText();
-			if(text != null && !text.isEmpty()) {
-				selectedPort 	 = Integer.parseInt(text);
-				correctlyPressed = true;
-				stage.close();
+		timeout.setValue(selectedTimeout);
+		timeout.setFont(Font.font("Consolas", FontWeight.BOLD, 12));
+		timeout.setValueFormat("%.0f");
+		timeout.setPadding(new Insets(-1));
+		timeout.setBorder(new Border(new BorderStroke(
+			Color.GRAY, BorderStrokeStyle.SOLID,
+			CornerRadii.EMPTY, new BorderWidths(1))));
+		timeout.setForegroundMargin(new Insets(1));
+		
+		class ActionStart {
+			
+			public void handle() {
+				String textIP	= txtIPAddr.getText();
+				String textPort = txtPort.getText();
+				if(textIP 	!= null && !textIP.isEmpty() &&
+				   textPort != null && !textPort.isEmpty()) {
+					selectedIPAddress = textIP;
+					selectedPort 	  = Integer.parseInt(textPort);
+					selectedTimeout	  = (int) timeout.getValue();
+					correctlyPressed  = true;
+					stage.close();
+				}
 			}
-		});
+		}
+		ActionStart action = new ActionStart();
+		btnStart.setOnAction((event) -> action.handle());
 		btnStart.setOnKeyPressed((event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
-				btnStart.getOnAction().handle(null);
+				action.handle();
+			}
+		});
+		txtIPAddr.setOnKeyPressed((event) -> {
+			if(event.getCode() == KeyCode.ENTER) {
+				action.handle();
+			}
+		});
+		txtPort.setOnKeyPressed((event) -> {
+			if(event.getCode() == KeyCode.ENTER) {
+				action.handle();
 			}
 		});
 		
@@ -352,12 +391,14 @@ public class WindowServer {
 		pane.setPadding(new Insets(10));
 		pane.getChildren().addAll(
 			lblIPAddr, txtIPAddr, lblPort, txtPort,
-			boxBottom);
+			lblTimeout, timeout, boxBottom);
 		GridPane.setConstraints(lblIPAddr, 0, 0);
 		GridPane.setConstraints(txtIPAddr, 1, 0);
 		GridPane.setConstraints(lblPort, 0, 1);
 		GridPane.setConstraints(txtPort, 1, 1);
-		GridPane.setConstraints(boxBottom, 0, 2, 2, 1);
+		GridPane.setConstraints(lblTimeout, 0, 2);
+		GridPane.setConstraints(timeout, 1, 2);
+		GridPane.setConstraints(boxBottom, 0, 3, 2, 1);
 		GridPane.setHgrow(txtIPAddr, Priority.ALWAYS);
 		GridPane.setHgrow(txtPort, Priority.ALWAYS);
 		GridPane.setHgrow(boxBottom, Priority.ALWAYS);
@@ -381,6 +422,7 @@ public class WindowServer {
 	
 	public void start(int port) {
 		server = SecureServer.create(port, "somerandompassword");
+		server.setAntiSpamProtection(new AntiSpamProtection(400, 8));
 		server.addListener(ServerEvent.CLIENT_CONNECTED, (client) -> {
 			String clientIP			   = client.getIP();
 			ClientTableInfo clientInfo = new ClientTableInfo(
@@ -545,6 +587,7 @@ public class WindowServer {
 			
 			logger.logf("%s has been disconnected!", username);
 		});
+		server.setTimeout(selectedTimeout);
 		server.setServerName("Test Server");
 		new Thread(() -> server.start()).start();
 	}

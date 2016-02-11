@@ -11,22 +11,25 @@ public final class FinalData implements Serializable, Comparable<Object> {
 	protected final Object value;
 	protected final String senderIP;
 	protected final String dateTime;
+	protected final String receiver;
 	
-	public FinalData(Object value, String senderIP) {
-		this(value, senderIP, DateHelper.getCurrentDate());
+	public FinalData(Object value, String senderIP, String receiver) {
+		this(value, senderIP, DateHelper.getCurrentDate(), receiver);
 	}
 	
 	@SuppressWarnings("unchecked")
-	private FinalData(Object value, String senderIP, String dateTime) {
+	private FinalData(Object value, String senderIP, String dateTime, String receiver) {
 		if(value instanceof Map<?, ?>) {
 			Map<Object, Object> map
 				= (Map<Object, Object>) value;
 			map.put("senderIP", senderIP);
 			map.put("dateTime", dateTime);
+			map.put("receiver", receiver);
 		}
 		this.value 	  = value;
 		this.senderIP = senderIP;
 		this.dateTime = dateTime;
+		this.receiver = receiver;
 	}
 	
 	public Object getData() {
@@ -39,6 +42,10 @@ public final class FinalData implements Serializable, Comparable<Object> {
 	
 	public String getDateTime() {
 		return dateTime;
+	}
+	
+	public String getReceiver() {
+		return receiver;
 	}
 	
 	@Override
@@ -67,11 +74,12 @@ public final class FinalData implements Serializable, Comparable<Object> {
 		return toData0();
 	}
 	
-	public static final FinalData create(String senderIP, Data data) {
-		return new FinalData(data.getPropMap(), senderIP);
+	public static final FinalData create(String senderIP, String receiver, Data data) {
+		return new FinalData(data.getPropMap(), senderIP, receiver);
 	}
 	
 	public static final FinalData create(FinalData fdata, Data data) {
-		return new FinalData(data.getPropMap(), fdata.senderIP, fdata.dateTime);
+		return new FinalData(data.getPropMap(), fdata.senderIP,
+				fdata.dateTime, fdata.receiver);
 	}
 }

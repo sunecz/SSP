@@ -25,7 +25,6 @@ public final class SecurityHelper {
 			return load(input, password);
 		} catch(IOException ex) {
 		}
-		
 		return null;
 	}
 	
@@ -42,7 +41,6 @@ public final class SecurityHelper {
 			}
 		} catch(Exception ex) {
 		}
-		
 		return null;
 	}
 	
@@ -70,7 +68,6 @@ public final class SecurityHelper {
 			} catch(Exception ex) {
 			}
 		}
-		
 		return null;
 	}
 	
@@ -87,7 +84,6 @@ public final class SecurityHelper {
 			return socket;
 		} catch(Exception ex) {
 		}
-		
 		return null;
 	}
 	
@@ -104,7 +100,6 @@ public final class SecurityHelper {
 			return socket;
 		} catch(Exception ex) {
 		}
-		
 		return null;
 	}
 }

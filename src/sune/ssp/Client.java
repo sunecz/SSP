@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import sune.ssp.data.AcceptData;
 import sune.ssp.data.ClientInfo;
@@ -56,6 +57,7 @@ import sune.ssp.util.Waiter;
 public class Client {
 	
 	private static final String UNKNOWN_FILE_NAME = "Unknown name";
+	private static final String RECEIVER_ALL 	  = "";
 	
 	private String username;
 	private Connection connection;
@@ -100,6 +102,11 @@ public class Client {
 	 * @param max New maximum amount of file-send transfers. Default is 5.*/
 	public void setMaxSendTransfers(int max) {
 		MAX_SEND_TRANSFERS = max;
+	}
+	
+	protected int TIMEOUT = 8000;
+	public void setTimeout(int timeout) {
+		TIMEOUT = timeout;
 	}
 	
 	// Event registry
@@ -287,7 +294,7 @@ public class Client {
 	
 	protected Client(String serverIP, int serverPort) {
 		this.connection   = new Connection(
-			new IPAddress(PortUtils.getIpAddress(), serverPort),
+			new IPAddress(PortUtils.getLocalIpAddress(), serverPort),
 			new IPAddress(serverIP, serverPort));
 		this.dataToSend   = new ConcurrentLinkedQueue<>();
 		this.dataReceived = new ConcurrentLinkedQueue<>();
@@ -312,18 +319,22 @@ public class Client {
 	protected Socket createSocket(String serverIP, int serverPort)
 			throws UnknownHostException, IOException {
 		Socket socket = new Socket(serverIP, serverPort);
-		socket.setSoTimeout(8000);
+		socket.setSoTimeout(TIMEOUT);
 		return socket;
 	}
 	
-	protected void addDataToSend(Data data) {
+	protected void addDataToSend(Data data, String receiver) {
 		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(getIP(), data));
+			dataToSend.add(FinalData.create(getIP(), receiver, data));
 		}
 	}
 	
 	protected Data onDataReceived(Data data) {
 		return data;
+	}
+	
+	protected String generateUsername() {
+		return "username" + Randomizer.nextLong();
 	}
 	
 	/**
@@ -332,8 +343,8 @@ public class Client {
 		if(running) return;
 		
 		try {
-			if(username == null) {
-				setUsername("username" + Randomizer.nextLong());
+			if(username == null || username.trim().isEmpty()) {
+				setUsername(generateUsername());
 			}
 			IPAddress addr = connection.getDestination();
 			socket = createSocket(addr.getIP(),
@@ -434,7 +445,11 @@ public class Client {
 	 * Sends a data to the server.
 	 * @param data The data to be sent*/
 	public void send(Data data) {
-		addDataToSend(data);
+		send(data, RECEIVER_ALL);
+	}
+	
+	public void send(Data data, String receiver) {
+		addDataToSend(data, receiver);
 	}
 	
 	/**
@@ -595,6 +610,34 @@ public class Client {
 	}
 	
 	private void createFileSender(File file) {
+		new Thread(() -> createFileSender0(file)).start();
+	}
+	
+	private AtomicInteger count_st = new AtomicInteger();
+	private void waitToCorrectAmountST() {
+		int count = senders.size() +
+					count_st.get();
+		if(count >= MAX_SEND_TRANSFERS) {
+			while(count >= MAX_SEND_TRANSFERS) {
+				synchronized(senders) {
+					count = senders.size() +
+							count_st.get();
+				}
+				Utils.sleep(1);
+			}
+		}
+		count_st.incrementAndGet();
+		// Double-check to ensure the corrent amount
+		// of running send transfers.
+		count = senders.size() +
+				count_st.get();
+		if(count > MAX_SEND_TRANSFERS) {
+			count_st.decrementAndGet();
+			waitToCorrectAmountST();
+		}
+	}
+	private void createFileSender0(File file) {
+		waitToCorrectAmountST();
 		FileSender fileSender = new FileSender(file);
 		sendWait(new FileInfoData(
 			fileSender.getHash(),
@@ -635,7 +678,7 @@ public class Client {
 				return getIP();
 			}
 		};
-		
+		count_st.decrementAndGet();
 		synchronized(senders) {
 			senders.add(fileSender);
 		}

@@ -47,7 +47,7 @@ public class SecureServer extends Server {
 	@Override
 	protected ServerSocket createSocket(int port) throws IOException {
 		SSLServerSocket socket = SecurityHelper.createServer(port, password);
-		socket.setSoTimeout(8000);
+		socket.setSoTimeout(TIMEOUT);
 		return socket;
 	}
 	
@@ -57,13 +57,13 @@ public class SecureServer extends Server {
 	}
 	
 	@Override
-	protected void addDataToSend(Data data, String senderIP) {
+	protected void addDataToSend(Data data, String senderIP, String receiver) {
 		SymmetricKey key;
 		if((key = symmetricKeys.get(senderIP)) != null) {
 			// Encrypt the data using client's symmetric key
 			data = new CryptedData(key, data);
 		}
-		super.addDataToSend(data, senderIP);
+		super.addDataToSend(data, senderIP, receiver);
 	}
 	
 	public void addPublicKey(String ipAddress, PublicKey key) {

@@ -41,6 +41,8 @@ import sune.ssp.util.Utils;
 
 public class Server {
 	
+	private static final String RECEIVER_ALL = "";
+	
 	private IPAddress ipAddress;
 	private ServerSocket server;
 	private volatile boolean running;
@@ -53,6 +55,7 @@ public class Server {
 	private ListMap<ServerClient, String> acceptedFiles;
 	private ListMap<ServerClient, String> terminatedFiles;
 	private ListMap<ServerClient, String> waitStateFiles;
+	private List<ServerClient> responses;
 	
 	private int BUFFER_SIZE = 8192;
 	public void setBufferSize(int size) {
@@ -77,6 +80,11 @@ public class Server {
 	private boolean forceSend;
 	public void setForceSend(boolean value) {
 		forceSend = value;
+	}
+	
+	protected int TIMEOUT = 8000;
+	public void setTimeout(int timeout) {
+		TIMEOUT = timeout;
 	}
 	
 	private AntiSpamProtection asp;
@@ -138,8 +146,13 @@ public class Server {
 					FinalData data = dataToSend.poll();
 					synchronized(clients) {
 						String senderIP = data.getSenderIP();
+						String receiver = data.getReceiver();
+						boolean useRecv = !receiver.isEmpty();
 						for(ServerClient client : clients.values()) {
-							if(forceSend || !client.getIP().equals(senderIP)) {
+							String clientIP = client.getIP();
+							if((forceSend) || (
+							   (useRecv  && clientIP.equals(receiver)) ||
+							   (!useRecv && !clientIP.equals(senderIP)))) {
 								client.send(data);
 							}
 						}
@@ -153,32 +166,33 @@ public class Server {
 	
 	private Thread threadReceived;
 	private Runnable runReceived = (() -> {
-		while(running) {			
-			for(ServerClient client : clients.values()) {
-				FinalData fdata;
-				if((fdata = client.nextData()) != null) {
-					Data data = fdata.toData().cast();
-					if(data instanceof StatusData) {
-						Status status = ((StatusData) data).getStatus();
-						switch(status) {
-							case DISCONNECTED_BY_USER:
-								String clientIP 	 = data.getSenderIP();
-								ServerClient sclient = clients.get(clientIP);
-								sclient.close();
-								removeClient(clientIP);
-								eventRegistry.call(
-									ServerEvent.CLIENT_DISCONNECTED, sclient);
-								break;
-							default:
-								break;
+		while(running) {
+			synchronized(clients) {
+				for(ServerClient client : clients.values()) {
+					FinalData fdata;
+					if((fdata = client.nextData()) != null) {
+						Data data = fdata.toData().cast();
+						if(data instanceof StatusData) {
+							Status status = ((StatusData) data).getStatus();
+							switch(status) {
+								case DISCONNECTED_BY_USER:
+									String clientIP 	 = data.getSenderIP();
+									ServerClient sclient = clients.get(clientIP);
+									sclient.close();
+									removeClient(clientIP);
+									eventRegistry.call(
+										ServerEvent.CLIENT_DISCONNECTED, sclient);
+									break;
+								default:
+									break;
+							}
+						} else {
+							send(data, client.getIP(), RECEIVER_ALL);
 						}
-					} else {
-						send(data, client.getIP());
+						eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
 					}
-					eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
 				}
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -220,6 +234,7 @@ public class Server {
 		this.acceptedFiles	 = new ListMap<>();
 		this.terminatedFiles = new ListMap<>();
 		this.waitStateFiles	 = new ListMap<>();
+		this.responses		 = new ArrayList<>();
 	}
 	
 	public static Server create(int port) {
@@ -234,7 +249,7 @@ public class Server {
 	
 	protected ServerSocket createSocket(int port) throws IOException {
 		ServerSocket socket = new ServerSocket(port);
-		socket.setSoTimeout(8000);
+		socket.setSoTimeout(TIMEOUT);
 		return socket;
 	}
 	
@@ -242,10 +257,10 @@ public class Server {
 		return new ServerClient(this, socket);
 	}
 	
-	protected void addDataToSend(Data data, String senderIP) {
+	protected void addDataToSend(Data data, String senderIP, String receiver) {
 		synchronized(dataToSend) {
 			dataToSend.add(FinalData.create(
-				senderIP, data));
+				senderIP, receiver, data));
 		}
 	}
 	
@@ -318,11 +333,15 @@ public class Server {
 	}
 	
 	public void send(Data data) {
-		send(data, SERVER_NAME);
+		send(data, SERVER_NAME, RECEIVER_ALL);
 	}
 	
 	protected void send(Data data, String senderIP) {
-		addDataToSend(data, senderIP);
+		send(data, senderIP, RECEIVER_ALL);
+	}
+	
+	protected void send(Data data, String senderIP, String receiver) {
+		addDataToSend(data, senderIP, receiver);
 	}
 	
 	public void send(Status status) {
@@ -381,7 +400,7 @@ public class Server {
 		}
 	}
 	
-	public <T extends Serializable> void sendList(ServerClient client, ListType type) {
+	public void sendList(ServerClient client, ListType type) {
 		sendList(client, createList(type));
 	}
 	
@@ -429,7 +448,7 @@ public class Server {
 		}
 	}
 	
-	public String getUsername(String ipAddress) {
+	public String getClientUsername(String ipAddress) {
 		return clients.containsKey(ipAddress) ?
 			clients.get(ipAddress).getIP() : ipAddress;
 	}
@@ -523,7 +542,6 @@ public class Server {
 		new Thread(() -> createFileSender0(client, file)).start();
 	}
 	
-	private List<ServerClient> responses = new ArrayList<>();
 	private void createFileSender0(ServerClient client, File file) {
 		if(!responses.contains(client)) {
 			responses.add(client);

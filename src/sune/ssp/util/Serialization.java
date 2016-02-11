@@ -59,7 +59,6 @@ public final class Serialization {
 				}
 			}
 		} catch(Exception ex) {
-			ex.printStackTrace();
 		}
 		return null;
 	}

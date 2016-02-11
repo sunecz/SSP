@@ -18,6 +18,7 @@ public class Data implements Serializable, Comparable<Object> {
 	private static final String PROPERTY_CLASS 	  = "class";
 	private static final String PROPERTY_SENDERIP = "senderIP";
 	private static final String PROPERTY_DATETIME = "dateTime";
+	private static final String PROPERTY_RECEIVER = "receiver";
 	
 	private static final Map<String, Object> mk_propMap(Object... values) {
 		if((values.length & 1) == 1) {
@@ -66,6 +67,10 @@ public class Data implements Serializable, Comparable<Object> {
 		values.put(PROPERTY_DATETIME, dateTime);
 	}
 	
+	void setReceiver(String receiver) {
+		values.put(PROPERTY_RECEIVER, receiver);
+	}
+	
 	protected void setData(String name, Object value) {
 		if(values.containsKey(name)) {
 			values.put(name, value);
@@ -77,11 +82,15 @@ public class Data implements Serializable, Comparable<Object> {
 	}
 	
 	public String getSenderIP() {
-		return new Value(getData(PROPERTY_SENDERIP)).stringValue();
+		return (String) getData(PROPERTY_SENDERIP);
 	}
 	
 	public String getDateTime() {
-		return new Value(getData(PROPERTY_DATETIME)).stringValue();
+		return (String) getData(PROPERTY_DATETIME);
+	}
+	
+	public String getReceiver() {
+		return (String) getData(PROPERTY_RECEIVER);
 	}
 	
 	Map<String, Object> getPropMap() {
@@ -134,7 +143,8 @@ public class Data implements Serializable, Comparable<Object> {
 			List<Object> list		= new ArrayList<>();
 			for(Entry<String, Object> e : map.entrySet()) {
 				String name = e.getKey();
-				if(!name.equals(PROPERTY_SENDERIP) &&
+				if(!name.equals(PROPERTY_RECEIVER) &&
+				   !name.equals(PROPERTY_SENDERIP) &&
 				   !name.equals(PROPERTY_DATETIME) &&
 				   !name.equals(PROPERTY_CLASS)) {
 					list.add(e.getValue());

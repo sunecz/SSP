@@ -11,7 +11,7 @@ public class P2PClient {
 	protected P2PClient(int serverPort, String password) {
 		this.server  	 = SecureServer.create(serverPort, password);
 		this.multiClient = new MultiClient();
-		this.server.setServerName(PortUtils.getIpAddress());
+		this.server.setServerName(PortUtils.getLocalIpAddress());
 		this.server.setForceSend(true);
 	}
 	
