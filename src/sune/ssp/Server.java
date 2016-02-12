@@ -32,11 +32,15 @@ import sune.ssp.event.EventRegistry;
 import sune.ssp.event.EventType;
 import sune.ssp.event.Listener;
 import sune.ssp.event.ServerEvent;
+import sune.ssp.file.FileReader;
 import sune.ssp.file.FileSender;
+import sune.ssp.file.FilesStorage;
+import sune.ssp.file.FilesStorage.StorageFile;
 import sune.ssp.file.Sender;
 import sune.ssp.file.TransferType;
 import sune.ssp.util.AntiSpamProtection;
 import sune.ssp.util.ListMap;
+import sune.ssp.util.PathSystem;
 import sune.ssp.util.Utils;
 
 public class Server {
@@ -56,6 +60,9 @@ public class Server {
 	private ListMap<ServerClient, String> terminatedFiles;
 	private ListMap<ServerClient, String> waitStateFiles;
 	private List<ServerClient> responses;
+	private Map<String, Integer> sending;
+	
+	private FilesStorage fstorage;
 	
 	private int BUFFER_SIZE = 8192;
 	public void setBufferSize(int size) {
@@ -143,23 +150,20 @@ public class Server {
 		while(running) {
 			synchronized(dataToSend) {
 				if(!dataToSend.isEmpty()) {
-					FinalData data = dataToSend.poll();
-					synchronized(clients) {
-						String senderIP = data.getSenderIP();
-						String receiver = data.getReceiver();
-						boolean useRecv = !receiver.isEmpty();
-						for(ServerClient client : clients.values()) {
-							String clientIP = client.getIP();
-							if((forceSend) || (
-							   (useRecv  && clientIP.equals(receiver)) ||
-							   (!useRecv && !clientIP.equals(senderIP)))) {
-								client.send(data);
-							}
+					FinalData data  = dataToSend.poll();
+					String senderIP = data.getSenderIP();
+					String receiver = data.getReceiver();
+					boolean useRecv = !receiver.isEmpty();
+					for(ServerClient client : clients.values()) {
+						String clientIP = client.getIP();
+						if((forceSend) || (
+						   (useRecv  && clientIP.equals(receiver)) ||
+						   (!useRecv && !clientIP.equals(senderIP)))) {
+							client.send(data);
 						}
 					}
 				}
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -167,30 +171,76 @@ public class Server {
 	private Thread threadReceived;
 	private Runnable runReceived = (() -> {
 		while(running) {
-			synchronized(clients) {
-				for(ServerClient client : clients.values()) {
-					FinalData fdata;
-					if((fdata = client.nextData()) != null) {
-						Data data = fdata.toData().cast();
-						if(data instanceof StatusData) {
-							Status status = ((StatusData) data).getStatus();
-							switch(status) {
-								case DISCONNECTED_BY_USER:
-									String clientIP 	 = data.getSenderIP();
-									ServerClient sclient = clients.get(clientIP);
-									sclient.close();
-									removeClient(clientIP);
-									eventRegistry.call(
-										ServerEvent.CLIENT_DISCONNECTED, sclient);
-									break;
-								default:
-									break;
-							}
-						} else {
-							send(data, client.getIP(), RECEIVER_ALL);
+			for(ServerClient client : clients.values()) {
+				FinalData fdata;
+				if((fdata = client.nextData()) != null) {
+					Data data = fdata.toData().cast();
+					if(data instanceof StatusData) {
+						Status status = ((StatusData) data).getStatus();
+						switch(status) {
+							case DISCONNECTED_BY_USER:
+								String clientIP 	 = data.getSenderIP();
+								ServerClient sclient = clients.get(clientIP);
+								sclient.close();
+								removeClient(clientIP);
+								eventRegistry.call(
+									ServerEvent.CLIENT_DISCONNECTED, sclient);
+								break;
+							default:
+								break;
 						}
-						eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
+					} else {
+						if(data instanceof FileInfoData) {
+							FileInfoData info = (FileInfoData) data;
+							try {
+								StorageFile sf  = fstorage.createFile(
+									info.getHash(), info.getName(), info.getSize());
+								String senderIP = info.getSenderIP();
+								for(ServerClient sclient : clients.values()) {
+									String receiverIP = sclient.getIP();
+									if(!senderIP.equals(receiverIP)) {
+										new Thread(() -> {
+											if(waitTillAccepted(sclient, sf)) {
+												String hash = info.getHash();
+												long total 	= info.getSize();
+												synchronized(sending) {
+													sending.put(hash, sending.getOrDefault(hash, 0)+1);
+												}
+												FileReader reader = sf.getReader(receiverIP);
+												
+												byte[] bytes;
+												while(running && !reader.isRead()) {
+													if((bytes = reader.read()) != null) {
+														sclient.send(new FileData(hash, bytes, total));
+													}
+													Utils.sleep(1);
+												}
+												int current = 0;
+												synchronized(sending) {
+													current = sending.getOrDefault(hash, 0);
+													sending.put(hash, --current);	
+												}
+												if(reader.isRead() && current <= 0) {
+													synchronized(sending) {
+														sending.remove(hash);
+													}
+													fstorage.removeFile(hash);
+												}
+											}
+										}).start();
+									}
+								}
+							} catch(Exception ex) {
+							}
+						} else if(data instanceof FileData) {
+							FileData fileData = (FileData) data;
+							StorageFile sfile = fstorage.getFile(fileData.getHash());
+							sfile.getWriter().write(fileData.getRawData());
+						} else {
+							send(data, client.getIP());
+						}
 					}
+					eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
 				}
 			}
 			Utils.sleep(1);
@@ -235,6 +285,7 @@ public class Server {
 		this.terminatedFiles = new ListMap<>();
 		this.waitStateFiles	 = new ListMap<>();
 		this.responses		 = new ArrayList<>();
+		this.sending		 = new LinkedHashMap<>();
 	}
 	
 	public static Server create(int port) {
@@ -269,6 +320,7 @@ public class Server {
 		
 		try {
 			server 		   = createSocket(ipAddress.getPort());
+			fstorage	   = FilesStorage.create(PathSystem.getFullPath("server_fs"));
 			running 	   = true;
 			threadAccept   = new Thread(runAccept);
 			threadSend	   = new Thread(runSend);
@@ -304,8 +356,8 @@ public class Server {
 		
 		try {
 			closeClients();
-			if(server != null)
-				server.close();
+			if(server 	!= null) server.close();
+			if(fstorage != null) fstorage.remove();
 			running = false;
 			
 			if(server != null) {
@@ -395,8 +447,10 @@ public class Server {
 			throw new IllegalArgumentException(
 				"Data list cannot be null!");
 		}
-		for(ServerClient client : clients.values()) {
-			sendList(client, list);
+		synchronized(clients) {
+			for(ServerClient client : clients.values()) {
+				sendList(client, list);
+			}
 		}
 	}
 	
@@ -497,12 +551,16 @@ public class Server {
 	}
 	
 	void addClient(String clientIP, ServerClient client) {
-		clients.put(clientIP, client);
+		synchronized(clients) {
+			clients.put(clientIP, client);
+		}
 		sendList(ListType.CONNECTED_CLIENTS);
 	}
 	
 	void removeClient(String clientIP) {
-		clients.remove(clientIP);
+		synchronized(clients) {
+			clients.remove(clientIP);
+		}
 		sendList(ListType.CONNECTED_CLIENTS);
 	}
 	
@@ -520,14 +578,48 @@ public class Server {
 	}
 	
 	protected boolean canConnect(String ipAddress) {
-		/* Add a special condition to allow a client to connect
-		 * more than once onto the localhost server.*/
-		return ipAddress == getIP() ||
-			   !clients.containsKey(ipAddress);
+		return !clients.containsKey(ipAddress);
 	}
 	
 	protected ServerClient getClient(String ipAddress) {
 		return clients.get(ipAddress);
+	}
+	
+	private boolean waitTillAccepted(ServerClient client, StorageFile file) {
+		if(!responses.contains(client)) {
+			responses.add(client);
+		} else {
+			boolean has = true;
+			while(running && has) {
+				synchronized(responses) {
+					has = responses.contains(client);
+				}
+				Utils.sleep(1);
+			}
+			return waitTillAccepted(client, file);
+		}
+		String hash = file.getHash();
+		String name = file.getName();
+		long size	= file.getTotalSize();
+		client.sendWait(new FileInfoData(
+			hash, name, size, SEND_WAIT_TIME));
+		
+		List<String> accepted 	= acceptedFiles.ensure(client);
+		List<String> terminated = terminatedFiles.ensure(client);
+		List<String> waitState  = waitStateFiles.ensure(client);
+		
+		long current = 0;
+		while(running && (
+				!(accepted.contains(hash)  ||
+				terminated.contains(hash)) &&
+				(current < SEND_WAIT_TIME  ||
+				waitState.contains(hash)))) {
+			++current;
+			Utils.sleep(1);
+		}
+		
+		responses.remove(client);
+		return accepted.contains(hash);
 	}
 	
 	private void createFileSenders(File file) {

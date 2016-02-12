@@ -53,8 +53,8 @@ import sune.ssp.data.Message;
 import sune.ssp.etc.DataList;
 import sune.ssp.etc.ServerClientInfo;
 import sune.ssp.event.ClientEvent;
-import sune.ssp.file.FileSaver;
 import sune.ssp.file.FileSender;
+import sune.ssp.file.FileWriter;
 import sune.ssp.file.TransferType;
 import sune.ssp.logger.Logger;
 import sune.ssp.logger.ThreadLogger;
@@ -64,6 +64,7 @@ import sune.ssp.util.Formatter;
 import sune.ssp.util.PortUtils;
 import sune.ssp.util.Randomizer;
 import sune.ssp.util.Resource;
+import sune.ssp.util.UnitHelper;
 import sune.ssp.util.Utils;
 import sune.ssp.util.Waiter;
 
@@ -95,7 +96,7 @@ public class WindowClient {
 	private TableView<FileTableInfo> tableTransfers;
 	private Map<String, FileSender> fileSenders  = new LinkedHashMap<>();
 	private Map<String, FileTableInfo> fileInfos = new LinkedHashMap<>();
-	private Map<String, FileSaver> fileSavers 	 = new LinkedHashMap<>();
+	private Map<String, FileWriter> fileSavers 	 = new LinkedHashMap<>();
 	private FileChooser fileChooserSend;
 	private FileChooser fileChooserSave;
 	
@@ -474,14 +475,15 @@ public class WindowClient {
 					String hash 	= fi.getHash();
 					String name 	= fi.getName();
 					String senderIP = fi.getSenderIP();
+					long totalSize	= fi.getSize();
 					long waitTime 	= fi.getWaitTime();
 					Waiter waiter 	= dataWaiter.getWaiter();
 					Dialog.setTimeout(waitTime);
 					ButtonType result = Dialog.showQuestionDialog(
 						stage,
 						String.format(
-							"Would you like to receive file %s from %s?",
-							name, senderIP),
+							"Would you like to receive file %s (%s) from %s?",
+							name, UnitHelper.byteToCorrectUnit(totalSize, 2), senderIP),
 						"Receive file",
 						ButtonType.YES,
 						ButtonType.NO);
@@ -492,7 +494,7 @@ public class WindowClient {
 						
 						File file;
 						if((file = fileChooserSave.showSaveDialog(stage)) != null) {
-							fileSavers.put(hash, FileSaver.create(file));
+							fileSavers.put(hash, FileWriter.create(file, fi.getSize()));
 							waiter.setWaitingState(false);
 							waiter.accept();
 						} else {
@@ -540,8 +542,8 @@ public class WindowClient {
 				FileTableInfo fileInfo = fileInfos.get(hash);
 				if(fileInfo != null) {
 					byte[] rawData  = fd.getRawData();
-					FileSaver saver = fileSavers.get(hash);
-					saver.save(rawData);
+					FileWriter saver = fileSavers.get(hash);
+					saver.write(rawData);
 					fileInfo.update(
 						fileInfo.getCurrentSize() + length);
 				}

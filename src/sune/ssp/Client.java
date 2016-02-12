@@ -72,7 +72,7 @@ public class Client {
 	private Queue<FinalData> dataReceived;
 	
 	private Queue<Data> waitQueue;
-	private boolean sent;
+	private volatile boolean sent;
 	
 	private Map<String, FileReceiver> receivers;
 	private Queue<File> filesToSend;
@@ -325,7 +325,8 @@ public class Client {
 	
 	protected void addDataToSend(Data data, String receiver) {
 		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(getIP(), receiver, data));
+			dataToSend.add(FinalData.create(
+				getIP(), receiver, data));
 		}
 	}
 	
@@ -350,7 +351,7 @@ public class Client {
 			socket = createSocket(addr.getIP(),
 								  addr.getPort());
 			connection = new Connection(
-				new IPAddress(socket.getInetAddress()
+				new IPAddress(socket.getLocalAddress()
 									.getHostAddress(),
 							  socket.getPort()),
 				connection.getDestination());
@@ -588,7 +589,9 @@ public class Client {
 						hash, name == null ?
 							UNKNOWN_FILE_NAME : name,
 						senderIP);
-					receivers.remove(hash);
+					synchronized(receivers) {
+						receivers.remove(hash);
+					}
 					eventRegistry.call(
 						ClientEvent.FILE_RECEIVED, info);
 				}

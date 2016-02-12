@@ -12,18 +12,18 @@ public class FileInfoData extends Data {
 	}
 	
 	public String getHash() {
-		return new Value(getData("hash")).stringValue();
+		return (String) getData("hash");
 	}
 	
 	public String getName() {
-		return new Value(getData("name")).stringValue();
+		return (String) getData("name");
 	}
 	
 	public long getSize() {
-		return new Value(getData("size")).longValue();
+		return (long) getData("size");
 	}
 	
 	public long getWaitTime() {
-		return new Value(getData("waitTime")).longValue();
+		return (long) getData("waitTime");
 	}
 }

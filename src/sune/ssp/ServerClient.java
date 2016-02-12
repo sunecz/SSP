@@ -32,7 +32,8 @@ import sune.ssp.util.Utils;
 
 public class ServerClient {
 	
-	private static final String RECEIVER_ALL = "";
+	private static final String UNKNOWN_FILE_NAME = "Unknown name";
+	private static final String RECEIVER_ALL 	  = "";
 	
 	protected Server server;
 	private String username;
@@ -48,7 +49,7 @@ public class ServerClient {
 	private Queue<FinalData> dataReceived;
 	
 	private Queue<Data> waitQueue;
-	private boolean sent;
+	private volatile boolean sent;
 	
 	private Map<String, FileReceiver> receivers;
 	
@@ -342,9 +343,11 @@ public class ServerClient {
 				public void end() {
 					FileInfo info = new FileInfo(
 						hash, name == null ?
-							"Unknown name" : name,
+							UNKNOWN_FILE_NAME : name,
 						senderIP);
-					receivers.remove(hash);
+					synchronized(receivers) {
+						receivers.remove(hash);
+					}
 					server.eventRegistry.call(
 						ServerEvent.FILE_RECEIVED, info);
 				}
@@ -353,7 +356,6 @@ public class ServerClient {
 				public void receive(byte[] data) {
 					FileData fileData = new FileData(
 						hash, data, size);
-					server.send(fileData, senderIP);
 					server.eventRegistry.call(
 						ServerEvent.FILE_DATA_RECEIVED, fileData);
 				}

@@ -16,18 +16,18 @@ public class FileData extends Data {
 	}
 	
 	public String getHash() {
-		return new Value(getData("hash")).stringValue();
+		return (String) getData("hash");
 	}
 	
 	public byte[] getRawData() {
-		return new Value(getData("data")).value(byte[].class);
+		return (byte[]) getData("data");
 	}
 	
 	public int getLength() {
-		return new Value(getData("length")).intValue();
+		return (int) getData("length");
 	}
 	
 	public long getTotalSize() {
-		return new Value(getData("total")).longValue();
+		return (long) getData("total");
 	}
 }
