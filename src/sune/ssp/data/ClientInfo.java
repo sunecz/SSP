@@ -9,6 +9,6 @@ public class ClientInfo extends Data {
 	}
 	
 	public String getUsername() {
-		return new Value(getData("username")).stringValue();
+		return (String) getData("username");
 	}
 }

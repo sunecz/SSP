@@ -1,4 +1,4 @@
-package sune.ssp.util;
+package sune.util.crypt;
 
 import java.security.SecureRandom;
 
@@ -28,6 +28,36 @@ public final class Randomizer {
 		return new SecureRandom(uniqueSeed(RANDOM));
 	}
 	
+	public static final long nextLong() {
+		return createSecure().nextLong();
+	}
+	
+	public static final long nextPositiveLong() {
+		// Mask the long without the sign bit
+		return createSecure().nextLong() & 0x7ffffffffffffffL;
+	}
+	
+	public static final int nextInt() {
+		return createSecure().nextInt();
+	}
+	
+	public static final int nextPositiveInt() {
+		// Mask the integer without the sign bit
+		return createSecure().nextInt() & 0x7fffffff;
+	}
+	
+	public static final SecureRandom createSecureSHA1() {
+		try {
+			SecureRandom random
+				= SecureRandom.getInstance(
+					"SHA1PRNG", "SUN");
+			random.setSeed(uniqueSeed(RANDOM));
+			return random;
+		} catch(Exception ex) {
+		}
+		return null;
+	}
+	
 	public static final SecureRandom createSecureStrong() {
 		try {
 			SecureRandom random
@@ -37,24 +67,6 @@ public final class Randomizer {
 		} catch(Exception ex) {
 		}
 		return null;
-	}
-	
-	public static final int nextInt() {
-		return RANDOM.nextInt();
-	}
-	
-	public static final long nextLong() {
-		return RANDOM.nextLong();
-	}
-	
-	public static final int nextPositiveInt() {
-		// Mask the integer without the sign bit
-		return RANDOM.nextInt() & 0x7fffffff;
-	}
-	
-	public static final long nextPositiveLong() {
-		// Mask the long without the sign bit
-		return RANDOM.nextLong() & 0x7ffffffffffffffL;
 	}
 	
 	static final String 	  STRING 		= "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

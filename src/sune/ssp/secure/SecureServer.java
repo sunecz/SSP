@@ -1,7 +1,6 @@
 package sune.ssp.secure;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.PublicKey;
@@ -18,6 +17,7 @@ import sune.ssp.crypt.Session;
 import sune.ssp.crypt.SimpleSession;
 import sune.ssp.crypt.SymmetricKey;
 import sune.ssp.data.Data;
+import sune.ssp.util.PortUtils;
 
 public class SecureServer extends Server {
 	
@@ -35,13 +35,7 @@ public class SecureServer extends Server {
 	}
 	
 	public static SecureServer create(int port, String password) {
-		try {
-			return new SecureServer(
-				InetAddress.getLocalHost().getHostAddress(), port, password);
-		} catch(Exception ex) {
-		}
-		
-		return null;
+		return new SecureServer(PortUtils.getLocalIpAddress(), port, password);
 	}
 	
 	@Override
@@ -59,9 +53,11 @@ public class SecureServer extends Server {
 	@Override
 	protected void addDataToSend(Data data, String senderIP, String receiver) {
 		SymmetricKey key;
-		if((key = symmetricKeys.get(senderIP)) != null) {
-			// Encrypt the data using client's symmetric key
-			data = new CryptedData(key, data);
+		synchronized(symmetricKeys) {
+			if((key = symmetricKeys.get(senderIP)) != null) {
+				// Encrypt the data using client's symmetric key
+				data = new CryptedData(key, data);
+			}
 		}
 		super.addDataToSend(data, senderIP, receiver);
 	}

@@ -14,10 +14,10 @@ public class AcceptData extends Data {
 	}
 	
 	public String getHash() {
-		return new Value(getData("hash")).stringValue();
+		return (String) getData("hash");
 	}
 	
 	public boolean isWaitState() {
-		return new Value(getData("wait")).booleanValue();
+		return (boolean) getData("wait");
 	}
 }

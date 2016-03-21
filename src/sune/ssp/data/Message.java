@@ -10,10 +10,10 @@ public class Message extends Data {
 	}
 	
 	public String getMessage() {
-		return new Value(getData("message")).stringValue();
+		return (String) getData("message");
 	}
 	
 	public String getUsername() {
-		return new Value(getData("username")).stringValue();
+		return (String) getData("username");
 	}
 }

@@ -3,7 +3,6 @@ package sune.ssp;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
-import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -41,6 +40,7 @@ import sune.ssp.file.TransferType;
 import sune.ssp.util.AntiSpamProtection;
 import sune.ssp.util.ListMap;
 import sune.ssp.util.PathSystem;
+import sune.ssp.util.PortUtils;
 import sune.ssp.util.Utils;
 
 public class Server {
@@ -100,13 +100,17 @@ public class Server {
 		if(asp != null) {
 			int maxTime 	= asp.getMaxTime();
 			int maxAttempts = asp.getMaxAttempts();
-			for(ServerClient client : clients.values()) {
-				client.asp.setMaxTime(maxTime);
-				client.asp.setMaxAttempts(maxAttempts);
+			synchronized(clients) {
+				for(ServerClient client : clients.values()) {
+					client.asp.setMaxTime(maxTime);
+					client.asp.setMaxAttempts(maxAttempts);
+				}
 			}
 		} else {
-			for(ServerClient client : clients.values()) {
-				client.setAntiSpamProtection(null);
+			synchronized(clients) {
+				for(ServerClient client : clients.values()) {
+					client.setAntiSpamProtection(null);
+				}
 			}
 		}
 	}
@@ -154,12 +158,14 @@ public class Server {
 					String senderIP = data.getSenderIP();
 					String receiver = data.getReceiver();
 					boolean useRecv = !receiver.isEmpty();
-					for(ServerClient client : clients.values()) {
-						String clientIP = client.getIP();
-						if((forceSend) || (
-						   (useRecv  && clientIP.equals(receiver)) ||
-						   (!useRecv && !clientIP.equals(senderIP)))) {
-							client.send(data);
+					synchronized(clients) {
+						for(ServerClient client : clients.values()) {
+							String clientIP = client.getIP();
+							if((forceSend) || (
+							   (useRecv  && clientIP.equals(receiver)) ||
+							   (!useRecv && !clientIP.equals(senderIP)))) {
+								client.send(data);
+							}
 						}
 					}
 				}
@@ -171,76 +177,80 @@ public class Server {
 	private Thread threadReceived;
 	private Runnable runReceived = (() -> {
 		while(running) {
-			for(ServerClient client : clients.values()) {
-				FinalData fdata;
-				if((fdata = client.nextData()) != null) {
-					Data data = fdata.toData().cast();
-					if(data instanceof StatusData) {
-						Status status = ((StatusData) data).getStatus();
-						switch(status) {
-							case DISCONNECTED_BY_USER:
-								String clientIP 	 = data.getSenderIP();
-								ServerClient sclient = clients.get(clientIP);
-								sclient.close();
-								removeClient(clientIP);
-								eventRegistry.call(
-									ServerEvent.CLIENT_DISCONNECTED, sclient);
-								break;
-							default:
-								break;
-						}
-					} else {
-						if(data instanceof FileInfoData) {
-							FileInfoData info = (FileInfoData) data;
-							try {
-								StorageFile sf  = fstorage.createFile(
-									info.getHash(), info.getName(), info.getSize());
-								String senderIP = info.getSenderIP();
-								for(ServerClient sclient : clients.values()) {
-									String receiverIP = sclient.getIP();
-									if(!senderIP.equals(receiverIP)) {
-										new Thread(() -> {
-											if(waitTillAccepted(sclient, sf)) {
-												String hash = info.getHash();
-												long total 	= info.getSize();
-												synchronized(sending) {
-													sending.put(hash, sending.getOrDefault(hash, 0)+1);
-												}
-												FileReader reader = sf.getReader(receiverIP);
-												
-												byte[] bytes;
-												while(running && !reader.isRead()) {
-													if((bytes = reader.read()) != null) {
-														sclient.send(new FileData(hash, bytes, total));
-													}
-													Utils.sleep(1);
-												}
-												int current = 0;
-												synchronized(sending) {
-													current = sending.getOrDefault(hash, 0);
-													sending.put(hash, --current);	
-												}
-												if(reader.isRead() && current <= 0) {
-													synchronized(sending) {
-														sending.remove(hash);
-													}
-													fstorage.removeFile(hash);
-												}
-											}
-										}).start();
-									}
+			synchronized(clients) {
+				if(!clients.isEmpty()) {
+					for(ServerClient client : clients.values()) {
+						FinalData fdata;
+						if((fdata = client.nextData()) != null) {
+							Data data = fdata.toData().cast();
+							if(data instanceof StatusData) {
+								Status status = ((StatusData) data).getStatus();
+								switch(status) {
+									case DISCONNECTED_BY_USER:
+										String clientIP 	 = data.getSenderIP();
+										ServerClient sclient = clients.get(clientIP);
+										sclient.close();
+										removeClient(clientIP);
+										eventRegistry.call(
+											ServerEvent.CLIENT_DISCONNECTED, sclient);
+										break;
+									default:
+										break;
 								}
-							} catch(Exception ex) {
+							} else {
+								if(data instanceof FileInfoData) {
+									FileInfoData info = (FileInfoData) data;
+									try {
+										StorageFile sf  = fstorage.createFile(
+											info.getHash(), info.getName(), info.getSize());
+										String senderIP = info.getSenderIP();
+										for(ServerClient sclient : clients.values()) {
+											String receiverIP = sclient.getIP();
+											if(!senderIP.equals(receiverIP)) {
+												new Thread(() -> {
+													if(waitTillAccepted(sclient, sf)) {
+														String hash = info.getHash();
+														long total 	= info.getSize();
+														synchronized(sending) {
+															sending.put(hash, sending.getOrDefault(hash, 0)+1);
+														}
+														FileReader reader = sf.getReader(receiverIP);
+														
+														byte[] bytes;
+														while(running && !reader.isRead()) {
+															if((bytes = reader.read()) != null) {
+																sclient.send(new FileData(hash, bytes, total));
+															}
+															Utils.sleep(1);
+														}
+														int current = 0;
+														synchronized(sending) {
+															current = sending.getOrDefault(hash, 0);
+															sending.put(hash, --current);	
+														}
+														if(reader.isRead() && current <= 0) {
+															synchronized(sending) {
+																sending.remove(hash);
+															}
+															fstorage.removeFile(hash);
+														}
+													}
+												}).start();
+											}
+										}
+									} catch(Exception ex) {
+									}
+								} else if(data instanceof FileData) {
+									FileData fileData = (FileData) data;
+									StorageFile sfile = fstorage.getFile(fileData.getHash());
+									sfile.getWriter().write(fileData.getRawData());
+								} else {
+									send(data, client.getIP());
+								}
 							}
-						} else if(data instanceof FileData) {
-							FileData fileData = (FileData) data;
-							StorageFile sfile = fstorage.getFile(fileData.getHash());
-							sfile.getWriter().write(fileData.getRawData());
-						} else {
-							send(data, client.getIP());
+							eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
 						}
 					}
-					eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
 				}
 			}
 			Utils.sleep(1);
@@ -250,32 +260,33 @@ public class Server {
 	private Thread threadSendFile;
 	private Runnable runSendFile = (() -> {
 		while(running) {
-			if(senders.size() < MAX_SEND_TRANSFERS) {
-				synchronized(filesToSend) {
-					try {
-						File file;
-						if((file = filesToSend.poll()) != null) {
-							createFileSenders(file);
+			synchronized(senders) {
+				try {
+					if(senders.size() < MAX_SEND_TRANSFERS) {
+						synchronized(filesToSend) {
+							if(!filesToSend.isEmpty()) {
+								File file;
+								if((file = filesToSend.poll()) != null) {
+									createFileSenders(file);
+								}
+							}
 						}
-					} catch(Exception ex) {
 					}
+					
+					if(!senders.isEmpty()) {
+						for(int i = 0; i < senders.size(); ++i) {
+							senders.get(i).sendNext();
+							Utils.sleep(1);
+						}
+					}
+				} catch(Exception ex) {
 				}
 			}
-			
-			if(senders.size() > 0) {
-				synchronized(senders) {
-					for(int i = 0; i < senders.size(); ++i) {
-						senders.get(i).sendNext();
-						Utils.sleep(1);
-					}
-				}
-			}
-			
 			Utils.sleep(1);
 		}
 	});
 	
-	protected Server(String ipAddress, int port) {
+	public Server(String ipAddress, int port) {
 		this.ipAddress    	 = new IPAddress(ipAddress, port);
 		this.clients      	 = new LinkedHashMap<>();
 		this.dataToSend   	 = new ConcurrentLinkedQueue<>();
@@ -289,13 +300,7 @@ public class Server {
 	}
 	
 	public static Server create(int port) {
-		try {
-			return new Server(
-				InetAddress.getLocalHost().getHostAddress(), port);
-		} catch(Exception ex) {
-		}
-		
-		return null;
+		return new Server(PortUtils.getLocalIpAddress(), port);
 	}
 	
 	protected ServerSocket createSocket(int port) throws IOException {
@@ -309,10 +314,7 @@ public class Server {
 	}
 	
 	protected void addDataToSend(Data data, String senderIP, String receiver) {
-		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(
-				senderIP, receiver, data));
-		}
+		dataToSend.add(FinalData.create(senderIP, receiver, data));
 	}
 	
 	public void start() {
@@ -320,7 +322,7 @@ public class Server {
 		
 		try {
 			server 		   = createSocket(ipAddress.getPort());
-			fstorage	   = FilesStorage.create(PathSystem.getFullPath("server_fs"));
+			fstorage	   = FilesStorage.create(PathSystem.getFullPath("files"));
 			running 	   = true;
 			threadAccept   = new Thread(runAccept);
 			threadSend	   = new Thread(runSend);
@@ -339,13 +341,16 @@ public class Server {
 	}
 	
 	private void closeClients() {
-		if(!clients.isEmpty()) {
-			Iterator<Entry<String, ServerClient>> it
-				= clients.entrySet().iterator();
-			while(it.hasNext()) {
-				ServerClient client = it.next().getValue();
-				client.close(Status.SERVER_STOPPED);
-				it.remove();
+		synchronized(clients) {
+			if(!clients.isEmpty()) {
+				// Close and remove the clients properly
+				Iterator<Entry<String, ServerClient>> it
+					= clients.entrySet().iterator();
+				while(it.hasNext()) {
+					ServerClient client = it.next().getValue();
+					client.close(Status.SERVER_STOPPED);
+					it.remove();
+				}
 			}
 		}
 	}
@@ -375,12 +380,14 @@ public class Server {
 	}
 	
 	protected void disconnect(String ipAddress, Status status) {
-		if(clients.containsKey(ipAddress)) {
-			ServerClient client = clients.get(ipAddress);
-			client.close(status);
-			removeClient(ipAddress);
-			eventRegistry.call(
-				ServerEvent.CLIENT_DISCONNECTED, client);
+		synchronized(clients) {
+			if(clients.containsKey(ipAddress)) {
+				ServerClient client = clients.get(ipAddress);
+				client.close(status);
+				removeClient(ipAddress);
+				eventRegistry.call(
+					ServerEvent.CLIENT_DISCONNECTED, client);
+			}
 		}
 	}
 	
@@ -420,20 +427,22 @@ public class Server {
 	public <T extends Serializable> DataList<T> createList(ListType type) {
 		switch(type) {
 			case CONNECTED_CLIENTS:
-				ServerClientInfo[] array
-					= new ServerClientInfo[clients.size()];
-				int i = 0;
-				for(ServerClient client : clients.values()) {
-					ServerClientInfo data
-						= new ServerClientInfo(
-							client.getIP(),
-							client.getUsername());
-					array[i++] = data;
+				synchronized(clients) {
+					ServerClientInfo[] array
+						= new ServerClientInfo[clients.size()];
+					int i = 0;
+					for(ServerClient client : clients.values()) {
+						ServerClientInfo data
+							= new ServerClientInfo(
+								client.getIP(),
+								client.getUsername());
+						array[i++] = data;
+					}
+					DataList<ServerClientInfo> list
+						= type.<ServerClientInfo>create(array);
+					list.setItemClass(ServerClientInfo.class);
+					return (DataList<T>) list;
 				}
-				DataList<ServerClientInfo> list
-					= type.<ServerClientInfo>create(array);
-				list.setItemClass(ServerClientInfo.class);
-				return (DataList<T>) list;
 		}
 		return null;
 	}
@@ -447,10 +456,8 @@ public class Server {
 			throw new IllegalArgumentException(
 				"Data list cannot be null!");
 		}
-		synchronized(clients) {
-			for(ServerClient client : clients.values()) {
-				sendList(client, list);
-			}
+		for(ServerClient client : clients.values()) {
+			sendList(client, list);
 		}
 	}
 	
@@ -463,8 +470,12 @@ public class Server {
 	}
 	
 	protected void terminateFor(ServerClient client, String fileHash, boolean self) {
-		terminatedFiles.append(client, fileHash);
-		waitStateFiles.removeValue(fileHash);
+		synchronized(terminatedFiles) {
+			terminatedFiles.append(client, fileHash);
+		}
+		synchronized(waitStateFiles) {
+			waitStateFiles.removeValue(fileHash);
+		}
 		if(!self) {
 			synchronized(senders) {
 				for(int i = 0; i < senders.size(); i++) {
@@ -484,7 +495,9 @@ public class Server {
 	public void terminate(String ipAddress, String fileHash, TransferType type) {
 		switch(type) {
 			case RECEIVE:
-				clients.get(ipAddress).terminate(fileHash, type);
+				synchronized(clients) {
+					clients.get(ipAddress).terminate(fileHash, type);
+				}
 				break;
 			case SEND:
 				synchronized(senders) {
@@ -492,19 +505,27 @@ public class Server {
 						FileSender sender = senders.get(i);
 						if(sender.getHash().equals(fileHash)) {
 							sender.close();
-							senders.remove(i);
+							senders.remove(i--);
 						}
 					}
-					send(new TerminationData(
-						fileHash, TransferType.SEND));
 				}
+				send(new TerminationData(
+					fileHash, TransferType.SEND));
 				break;
 		}
 	}
 	
+	public ServerClient getClient(String ipAddress) {
+		synchronized(clients) {
+			return clients.get(ipAddress);
+		}
+	}
+	
 	public String getClientUsername(String ipAddress) {
-		return clients.containsKey(ipAddress) ?
-			clients.get(ipAddress).getIP() : ipAddress;
+		synchronized(clients) {
+			return clients.containsKey(ipAddress) ?
+				clients.get(ipAddress).getIP() : ipAddress;
+		}
 	}
 	
 	public boolean isRunning() {
@@ -565,7 +586,9 @@ public class Server {
 	}
 	
 	protected void accept(ServerClient client, String hash) {
-		waitStateFiles.removeValue(hash);
+		synchronized(waitStateFiles) {
+			waitStateFiles.removeValue(hash);
+		}
 		synchronized(acceptedFiles) {
 			acceptedFiles.append(client, hash);
 		}
@@ -578,16 +601,20 @@ public class Server {
 	}
 	
 	protected boolean canConnect(String ipAddress) {
-		return !clients.containsKey(ipAddress);
-	}
-	
-	protected ServerClient getClient(String ipAddress) {
-		return clients.get(ipAddress);
+		synchronized(clients) {
+			return !clients.containsKey(ipAddress);
+		}
 	}
 	
 	private boolean waitTillAccepted(ServerClient client, StorageFile file) {
-		if(!responses.contains(client)) {
-			responses.add(client);
+		boolean contains = false;
+		synchronized(responses) {
+			contains = responses.contains(client);
+		}
+		if(!contains) {
+			synchronized(responses) {
+				responses.add(client);
+			}
 		} else {
 			boolean has = true;
 			while(running && has) {
@@ -618,7 +645,9 @@ public class Server {
 			Utils.sleep(1);
 		}
 		
-		responses.remove(client);
+		synchronized(responses) {
+			responses.remove(client);
+		}
 		return accepted.contains(hash);
 	}
 	
@@ -635,8 +664,14 @@ public class Server {
 	}
 	
 	private void createFileSender0(ServerClient client, File file) {
-		if(!responses.contains(client)) {
-			responses.add(client);
+		boolean contains = false;
+		synchronized(responses) {
+			contains = responses.contains(client);
+		}
+		if(!contains) {
+			synchronized(responses) {
+				responses.add(client);
+			}
 		} else {
 			boolean has = true;
 			while(running && has) {
@@ -669,7 +704,9 @@ public class Server {
 			Utils.sleep(1);
 		}
 		
-		responses.remove(client);
+		synchronized(responses) {
+			responses.remove(client);
+		}
 		if(accepted.contains(hash)) {
 			List<String> banned = terminatedFiles.ensure(client);
 			Sender sender 		= new Sender() {
@@ -682,8 +719,12 @@ public class Server {
 				
 				@Override
 				public void end() {
-					senders.remove(fileSender);
-					terminatedFiles.removeValue(hash);
+					synchronized(senders) {
+						senders.remove(fileSender);
+					}
+					synchronized(terminatedFiles) {
+						terminatedFiles.removeValue(hash);
+					}
 					eventRegistry.call(
 						ServerEvent.FILE_SEND_END, fileSender);
 				}
@@ -708,7 +749,6 @@ public class Server {
 					return SERVER_NAME;
 				}
 			};
-			
 			synchronized(senders) {
 				senders.add(fileSender);
 			}

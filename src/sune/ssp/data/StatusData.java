@@ -9,6 +9,6 @@ public class StatusData extends Data {
 	}
 	
 	public Status getStatus() {
-		return new Value(getData("status")).value(Status.class);
+		return (Status) getData("status");
 	}
 }

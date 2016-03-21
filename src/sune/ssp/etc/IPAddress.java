@@ -4,6 +4,8 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.util.regex.Pattern;
 
+import sune.ssp.util.PortUtils;
+
 public class IPAddress {
 	
 	private static final String REGEX_IPV4
@@ -25,6 +27,10 @@ public class IPAddress {
 		if(ipAddress == null || ipAddress.isEmpty()) {
 			throw new IllegalArgumentException(
 				"IP Address cannot be null or empty!");
+		}
+		if(!isValidPort(port)) {
+			throw new IllegalArgumentException(
+				"Port is out of range (0-65535)!");
 		}
 		this.ipAddress = ipAddress;
 		this.addr 	   = getInetAddress(ipAddress);
@@ -124,5 +130,39 @@ public class IPAddress {
 	
 	public int getPort() {
 		return port;
+	}
+	
+	public static boolean isValidPort(int port) {
+		return port >= 0 && port < PortUtils.MAX_PORT;
+	}
+	
+	public static boolean isValidCustomPort(int port) {
+		return port > 1024 && isValidPort(port);
+	}
+	
+	public static boolean isValidIPv4(String ipAddress) {
+		if(ipAddress == null || ipAddress.isEmpty())
+			return false;
+		String[] parts = ipAddress.split("\\.");
+		if(parts.length != 4) return false;
+		for(String part : parts) {
+			try {
+				int val = Integer.parseInt(part);
+				if(val < 0 || val > 255) {
+					return false;
+				}
+			} catch(Exception ex) {
+				return false;
+			}
+		}
+		return true;
+	}
+	
+	public static IPAddress getLocal() {
+		return getLocal(0);
+	}
+	
+	public static IPAddress getLocal(int port) {
+		return new IPAddress(PortUtils.getLocalIpAddress(), port);
 	}
 }

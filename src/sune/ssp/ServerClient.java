@@ -5,6 +5,7 @@ import java.io.BufferedOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.Socket;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -76,7 +77,6 @@ public class ServerClient {
 					}
 				}
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -94,7 +94,6 @@ public class ServerClient {
 				}
 			} catch(Exception ex) {
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -136,8 +135,10 @@ public class ServerClient {
 								long total 		= fd.getTotalSize();
 								String senderIP = fd.getSenderIP();
 								ensureFileReceiver(hash, null, total, senderIP);
-								FileReceiver receiver = receivers.get(hash);
-								receiver.receive(fd.getRawData());
+								synchronized(receivers) {
+									FileReceiver receiver = receivers.get(hash);
+									receiver.receive(fd.getRawData());
+								}
 							} else if(data instanceof TerminationData) {
 								TerminationData td = (TerminationData) data;
 								TransferType type  = td.getType();
@@ -147,8 +148,9 @@ public class ServerClient {
 										server.terminateFor(this, hash, false);
 										break;
 									case SEND:
-										FileReceiver receiver = receivers.get(hash);
+										FileReceiver receiver;
 										synchronized(receivers) {
+											receiver = receivers.get(hash);
 											receivers.remove(hash);
 										}
 										server.eventRegistry.call(
@@ -175,7 +177,7 @@ public class ServerClient {
 		}
 	});
 	
-	protected ServerClient(Server server, Socket socket) {
+	public ServerClient(Server server, Socket socket) {
 		this.server		   = server;
 		this.socket 	   = socket;
 		this.connection	   = new Connection(
@@ -219,7 +221,6 @@ public class ServerClient {
 						break;
 					}
 				}
-				
 				Utils.sleep(1);
 			}
 		} catch(Exception ex) {
@@ -293,15 +294,17 @@ public class ServerClient {
 		switch(type) {
 			case RECEIVE:
 				synchronized(receivers) {
-					for(Entry<String, FileReceiver> entry : receivers.entrySet()) {
-						FileReceiver receiver = entry.getValue();
+					Iterator<Entry<String, FileReceiver>> it
+						= receivers.entrySet().iterator();
+					while(it.hasNext()) {
+						FileReceiver receiver = it.next().getValue();
 						if(receiver.getHash().equals(fileHash)) {
-							receivers.remove(entry.getKey());
+							it.remove();
 						}
 					}
-					send(new TerminationData(
-						fileHash, TransferType.RECEIVE));
 				}
+				send(new TerminationData(
+					fileHash, TransferType.RECEIVE));
 				break;
 			default:
 				break;
@@ -327,7 +330,11 @@ public class ServerClient {
 	}
 	
 	private void ensureFileReceiver(String hash, String name, long size, String senderIP) {
-		if(!receivers.containsKey(hash)) {
+		boolean contains = false;
+		synchronized(receivers) {
+			contains = receivers.containsKey(hash);
+		}
+		if(!contains) {
 			FileReceiver fileReceiver = new FileReceiver(
 				hash, name, size, senderIP);
 			fileReceiver.init(new Receiver() {
@@ -366,7 +373,9 @@ public class ServerClient {
 				}
 			});
 		} else if(name != null) {
-			receivers.get(hash).setName(name);
+			synchronized(receivers) {
+				receivers.get(hash).setName(name);
+			}
 		}
 	}
 }

@@ -14,7 +14,7 @@ import java.util.Random;
 
 public class PortUtils {
 	
-	private static final int MAX_PORT = 1 << 16;
+	public static final int MAX_PORT = 1 << 16;
 	
 	public static String getIpAddress() {
 		try {

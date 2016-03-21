@@ -10,9 +10,13 @@ public class Connection {
 	}
 	
 	public Connection(IPAddress source, IPAddress dest) {
-		if(source == null || dest == null) {
+		if(source == null) {
 			throw new IllegalArgumentException(
-				"Source and destination address have to be non-null!");
+				"Source address cannot be null!");
+		}
+		if(dest == null) {
+			throw new IllegalArgumentException(
+				"Destination address cannot be null!");
 		}
 		this.source = source;
 		this.dest 	= dest;

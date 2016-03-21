@@ -1,6 +1,7 @@
 package gui;
 import java.io.File;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,6 +13,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.Menu;
@@ -28,6 +30,8 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.Border;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.BorderStroke;
@@ -38,6 +42,7 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -46,11 +51,13 @@ import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import sune.ssp.Client;
 import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.Message;
 import sune.ssp.etc.DataList;
+import sune.ssp.etc.IPAddress;
 import sune.ssp.etc.ServerClientInfo;
 import sune.ssp.event.ClientEvent;
 import sune.ssp.file.FileSender;
@@ -67,6 +74,7 @@ import sune.ssp.util.Resource;
 import sune.ssp.util.UnitHelper;
 import sune.ssp.util.Utils;
 import sune.ssp.util.Waiter;
+import sune.test.matrix.Matrix;
 
 public class WindowClient {
 	
@@ -76,7 +84,7 @@ public class WindowClient {
 	private static final int 	DEFAULT_PORT 	 = 2400;
 	private static final int 	DEFAULT_TIMEOUT  = 8000;
 	private static final String DEFAULT_USERNAME = "username" + Randomizer.nextPositiveLong();
-	private SecureClient client;
+	private Client client;
 	
 	private Stage stage;
 	private Scene scene;
@@ -135,6 +143,8 @@ public class WindowClient {
 	private int selectedPort 		 = DEFAULT_PORT;
 	private int selectedTimeout		 = DEFAULT_TIMEOUT;
 	private String selectedUsername	 = DEFAULT_USERNAME;
+	
+	private List<Runnable> runOnClose = new ArrayList<>();
 	
 	@SuppressWarnings("unchecked")
 	public WindowClient() {
@@ -301,29 +311,97 @@ public class WindowClient {
 		else 					stop();
 	}
 	
+	enum ClientType {
+		SECURED, NORMAL;
+		
+		@Override
+		public String toString() {
+			return Utils.fancyEnumName(this);
+		}
+	}
+	
 	public boolean showStartupDialog() {
 		correctlyPressed = false;		
 		Stage stage   	= new Stage();
+		StackPane box 	= new StackPane();
 		GridPane pane 	= new GridPane();
-		Scene scene   	= new Scene(pane, 300, 150);
+		Scene scene   	= new Scene(box, 300, 210);
 		HBox boxBottom 	= new HBox(5);
+		HBox boxTop 	= new HBox(5);
 		
+		Label lblType		  = new Label("Type");
 		Label lblIPAddr 	  = new Label("IP Address");
 		Label lblPort 		  = new Label("Port");
 		Label lblTimeout	  = new Label("Timeout");
 		Label lblUsername	  = new Label("Username");
 		TextField txtIPAddr   = new TextField();
-		TextField txtPort 	  = new TextField();
+		TextField txtPort 	  = new NumberTextField();
 		TextField txtUsername = new TextField();
 		MouseSlider timeout   = new MouseSlider(0, 32000);
 		Button btnStart		  = new Button("Connect");
+		ComboBox<ClientType> cmbType = new ScrollComboBox<>();
+		cmbType.getItems().addAll(ClientType.values());
+		cmbType.setMaxWidth(Double.MAX_VALUE);
+		
+		Matrix matrix = new Matrix(250, 25, 10);
+		matrix.setAutoResize(boxTop);
+		
+		txtIPAddr.textProperty().addListener((o) -> {
+			String text = txtIPAddr.getText();
+			if(text.length() > 15) {
+				txtIPAddr.setText(
+					text = text.substring(0, 15));
+			}
+			txtIPAddr.setBackground(new Background(
+				new BackgroundFill(
+					Color.web(
+						IPAddress.isValidIPv4(text) ?
+							"#9CFF91" : "#FF9393"),
+					CornerRadii.EMPTY,
+					new Insets(0)
+				)
+			));
+		});
+		
+		txtPort.textProperty().addListener((o) -> {
+			String text = txtPort.getText();
+			if(text.length() > 5) {
+				txtPort.setText(
+					text = text.substring(0, 5));
+			}
+			try {
+				txtPort.setBackground(new Background(
+					new BackgroundFill(
+						Color.web(
+							IPAddress.isValidCustomPort(
+								Integer.parseInt(text)) ?
+								"#9CFF91" : "#FF9393"),
+						CornerRadii.EMPTY,
+						new Insets(0)
+					)
+				));
+			} catch(Exception ex) {
+			}
+		});
+		
+		cmbType.getSelectionModel().selectedItemProperty().addListener((o) -> {
+			if(cmbType.getSelectionModel().getSelectedItem() == ClientType.SECURED) {
+				boxTop.setVisible(true);
+				matrix.start();
+			} else {
+				boxTop.setVisible(false);
+				matrix.stop();
+			}
+		});
 		
 		txtIPAddr.setText(selectedIPAddress);
 		txtPort.setText(Integer.toString(selectedPort));
 		txtUsername.setText(selectedUsername);
+		cmbType.getSelectionModel().select(ClientType.SECURED);
+		cmbType.setDisable(true);
 		timeout.setValue(selectedTimeout);
 		timeout.setFont(Font.font("Consolas", FontWeight.BOLD, 12));
-		timeout.setValueFormat("%.0f");
+		timeout.setValueFormat("%.0fms");
 		timeout.setPadding(new Insets(-1));
 		timeout.setBorder(new Border(new BorderStroke(
 			Color.GRAY, BorderStrokeStyle.SOLID,
@@ -353,44 +431,62 @@ public class WindowClient {
 		btnStart.setOnKeyPressed((event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
 				action.handle();
+				event.consume();
 			}
 		});
 		txtIPAddr.setOnKeyPressed((event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
 				action.handle();
+				event.consume();
 			}
 		});
 		txtPort.setOnKeyPressed((event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
 				action.handle();
+				event.consume();
 			}
 		});
 		txtUsername.setOnKeyPressed((event) -> {
 			if(event.getCode() == KeyCode.ENTER) {
 				action.handle();
+				event.consume();
 			}
 		});
 		
+		pane.setBackground(new Background(
+			new BackgroundFill(
+				Color.WHITE.deriveColor(0.0, 1.0, 1.0, 0.5),
+				CornerRadii.EMPTY, new Insets(0)
+			)
+		));
+		box.getChildren().addAll(boxTop, pane);
+		boxTop.getChildren().add(matrix);
+		
 		boxBottom.getChildren().addAll(btnStart);
 		boxBottom.setAlignment(Pos.BOTTOM_RIGHT);
-		pane.setPadding(new Insets(10));
+		pane.setPadding(new Insets(20));
 		pane.getChildren().addAll(
-			lblIPAddr, txtIPAddr, lblPort, txtPort,
-			lblTimeout, timeout, lblUsername, txtUsername,
-			boxBottom);
-		GridPane.setConstraints(lblIPAddr, 0, 0);
-		GridPane.setConstraints(txtIPAddr, 1, 0);
-		GridPane.setConstraints(lblPort, 0, 1);
-		GridPane.setConstraints(txtPort, 1, 1);
-		GridPane.setConstraints(lblTimeout, 0, 2);
-		GridPane.setConstraints(timeout, 1, 2);
-		GridPane.setConstraints(lblUsername, 0, 3);
-		GridPane.setConstraints(txtUsername, 1, 3);
-		GridPane.setConstraints(boxBottom, 0, 4, 2, 1);
+			lblType, cmbType, lblIPAddr, txtIPAddr,
+			lblPort, txtPort, lblTimeout, timeout,
+			lblUsername, txtUsername, boxBottom);
+		GridPane.setConstraints(lblType, 0, 0);
+		GridPane.setConstraints(cmbType, 1, 0);
+		GridPane.setConstraints(lblIPAddr, 0, 1);
+		GridPane.setConstraints(txtIPAddr, 1, 1);
+		GridPane.setConstraints(lblPort, 0, 2);
+		GridPane.setConstraints(txtPort, 1, 2);
+		GridPane.setConstraints(lblTimeout, 0, 3);
+		GridPane.setConstraints(timeout, 1, 3);
+		GridPane.setConstraints(lblUsername, 0, 4);
+		GridPane.setConstraints(txtUsername, 1, 4);
+		GridPane.setConstraints(boxBottom, 0, 5, 2, 1);
+		GridPane.setHgrow(cmbType, Priority.ALWAYS);
 		GridPane.setHgrow(txtIPAddr, Priority.ALWAYS);
 		GridPane.setHgrow(txtPort, Priority.ALWAYS);
 		GridPane.setHgrow(boxBottom, Priority.ALWAYS);
 		GridPane.setVgrow(boxBottom, Priority.ALWAYS);
+		GridPane.setMargin(lblType, new Insets(0, 15, 5, 0));
+		GridPane.setMargin(cmbType, new Insets(0, 0, 5, 0));
 		GridPane.setMargin(lblIPAddr, new Insets(0, 15, 5, 0));
 		GridPane.setMargin(txtIPAddr, new Insets(0, 0, 5, 0));
 		GridPane.setMargin(lblPort, new Insets(0, 15, 5, 0));
@@ -402,11 +498,16 @@ public class WindowClient {
 		btnStart.requestFocus();
 		
 		stage.setScene(scene);
-		stage.setTitle("Connect client");
+		stage.setTitle("Connect to a server");
 		stage.getIcons().add(WINDOW_ICON);
 		stage.setResizable(false);
 		stage.initModality(Modality.WINDOW_MODAL);
 		stage.initOwner(this.stage);
+		runOnClose.add(() -> {
+			if(matrix != null) {
+				matrix.stop();
+			}
+		});
 		stage.centerOnScreen();
 		stage.showAndWait();
 		return correctlyPressed;
@@ -654,6 +755,7 @@ public class WindowClient {
 	}
 	
 	public void stop() {
+		for(Runnable r : runOnClose) r.run();
 		if(client != null) client.disconnect();
 		if(logger != null) logger.dispose();
 		if(stage  != null) stage.close();

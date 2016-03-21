@@ -12,10 +12,10 @@ public class TerminationData extends Data {
 	}
 	
 	public String getHash() {
-		return new Value(getData("hash")).stringValue();
+		return (String) getData("hash");
 	}
 	
 	public TransferType getType() {
-		return new Value(getData("type")).value(TransferType.class);
+		return (TransferType) getData("type");
 	}
 }

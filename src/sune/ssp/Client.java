@@ -26,7 +26,6 @@ import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfo;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.FinalData;
-import sune.ssp.data.Message;
 import sune.ssp.data.Status;
 import sune.ssp.data.StatusData;
 import sune.ssp.data.TerminationData;
@@ -48,12 +47,54 @@ import sune.ssp.util.Utils;
 import sune.ssp.util.Waiter;
 
 /**
- * This class represents simple and not secured client that
- * is using SSP (Sune's Simple Protocol). It provides default
- * communication with a server and basic functionality, such
- * as sending/receiving data and sending/receiving files.
- * @author Sune
- * @since alpha v0.1-pre1*/
+ * This class represents simple and not secured client that is using
+ * SSP (Sune's Simple Protocol). It provides default communication
+ * with a server and basic functionality, such as sending/receiving
+ * data and sending/receiving files.<br>
+ * 
+ * <h2>Creating a new client</h2>
+ * Client is created using static method {@link #create(String, int)}.
+ * After calling this method you will obtain a new client object that
+ * holds information about to which server it should be connected. The
+ * client is not connected till method {@link #connect()} is called.
+ * After calling this method client will try to connect to the specified
+ * server.<br><br>
+ * <ul>
+ * 	<li>When the client has been successfully connected event listeners bound
+ * to event {@link ClientEvent#CONNECTED CONNECTED} are called.</li>
+ * 	<li>When the client could not be connected event listeners bound to event
+ * {@link ClientEvent#CANNOT_CONNECT CANNOT_CONNECT} are called.</li>
+ * 	<li>When the connection has timed out event listeners bound to event
+ * {@link ClientEvent#CONNECTION_TIMEOUT CONNECTION_TIMEOUT} are called.</li>
+ * </ul>
+ * 
+ * All event listeners should be bound to the specific event before calling
+ * the {@link #connect()} method.
+ * 
+ * <pre>
+ * Client client = Client.create(serverIP, serverPort);
+ * client.connect();
+ * </pre>
+ * 
+ * <i>Note: The {@link #connect()} method runs in the same thread it was called.
+ * So if the connection takes much time call this method in different thread.</i>
+ * 
+ * <h2>Binding event listeners to events</h2>
+ * Every event listener is bound to an event in the same way - using the
+ * {@link #addListener(EventType, Listener)} method and can be removed using
+ * the {@link #removeListener(EventType, Listener)} method.
+ * 
+ * <pre>
+ * Client client = Client.create(serverIP, serverPort);
+ * client.addListener(ClientEvent.CONNECTED, (value) -> {
+ * 	System.out.println("Client has been connected!");
+ * });
+ * client.connect();
+ * </pre>
+ * 
+ * <i>Note: The <b>value</b> parameter in event listener could be null and is
+ * null at some events, such as {@link CONNECTED} and others.</i><br><br>
+ * @author Sune*/
 public class Client {
 	
 	private static final String UNKNOWN_FILE_NAME = "Unknown name";
@@ -82,8 +123,9 @@ public class Client {
 	private boolean promptReceiveFile;
 	/**
 	 * Sets whether the prompt to receive a file should be shown or not.
-	 * @param value If true, listeners of {@link #registryPromptReceiveFile()}
-	 * are called when a file is sent to this client, otherwise not.*/
+	 * @param value If true, event listeners bound to event
+	 * {@link ClientEvent#PROMPT_RECEIVE_FILE PROMPT_RECEIVE_FILE} are
+	 * called when a file information are sent to this client, otherwise not.*/
 	public void setPromptToReceiveFile(boolean value) {
 		promptReceiveFile = value;
 	}
@@ -91,7 +133,7 @@ public class Client {
 	private int BUFFER_SIZE = 8192;
 	/**
 	 * Sets size of buffer that is used when sending a file.
-	 * @param size New size of the buffer. Default is 8192.*/
+	 * @param size New size of the buffer. Default value is 8192.*/
 	public void setBufferSize(int size) {
 		BUFFER_SIZE = size;
 	}
@@ -99,12 +141,17 @@ public class Client {
 	private int MAX_SEND_TRANSFERS = 5;
 	/**
 	 * Sets the maximum amount of file-send transfers.
-	 * @param max New maximum amount of file-send transfers. Default is 5.*/
+	 * @param max New maximum amount of file-send transfers.
+	 * Default value is 5.*/
 	public void setMaxSendTransfers(int max) {
 		MAX_SEND_TRANSFERS = max;
 	}
 	
 	protected int TIMEOUT = 8000;
+	/**
+	 * Sets the timeout when connecting to the server.
+	 * @param timeout New timeout value (in milliseconds).
+	 * Default value is 8000.*/
 	public void setTimeout(int timeout) {
 		TIMEOUT = timeout;
 	}
@@ -129,7 +176,6 @@ public class Client {
 					}
 				}
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -147,7 +193,6 @@ public class Client {
 				}
 			} catch(Exception ex) {
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -222,8 +267,10 @@ public class Client {
 								long total 		= fd.getTotalSize();
 								String senderIP = fd.getSenderIP();
 								ensureFileReceiver(hash, null, total, senderIP);
-								FileReceiver receiver = receivers.get(hash);
-								receiver.receive(fd.getRawData());
+								synchronized(receivers) {
+									FileReceiver receiver = receivers.get(hash);
+									receiver.receive(fd.getRawData());
+								}
 							} else if(data instanceof TerminationData) {
 								TerminationData td = (TerminationData) data;
 								TransferType type  = td.getType();
@@ -244,8 +291,9 @@ public class Client {
 										}
 										break;
 									case SEND:
-										FileReceiver receiver = receivers.get(hash);
+										FileReceiver receiver = null;
 										synchronized(receivers) {
+											receiver = receivers.get(hash);
 											receivers.remove(hash);
 										}
 										eventRegistry.call(
@@ -259,7 +307,6 @@ public class Client {
 					}
 				}
 			}
-			
 			Utils.sleep(1);
 		}
 	});
@@ -267,32 +314,33 @@ public class Client {
 	private Thread threadSendFile;
 	private Runnable runSendFile = (() -> {
 		while(running) {
-			if(senders.size() < MAX_SEND_TRANSFERS) {
-				synchronized(filesToSend) {
-					try {
-						File file;
-						if((file = filesToSend.poll()) != null) {
-							createFileSender(file);
+			synchronized(senders) {
+				try {
+					if(senders.size() < MAX_SEND_TRANSFERS) {
+						synchronized(filesToSend) {
+							if(!filesToSend.isEmpty()) {
+								File file;
+								if((file = filesToSend.poll()) != null) {
+									createFileSender(file);
+								}
+							}
 						}
-					} catch(Exception ex) {
 					}
+					
+					if(!senders.isEmpty()) {
+						for(int i = 0; i < senders.size(); ++i) {
+							senders.get(i).sendNext();
+							Utils.sleep(1);
+						}
+					}
+				} catch(Exception ex) {
 				}
 			}
-			
-			if(senders.size() > 0) {
-				synchronized(senders) {
-					for(int i = 0; i < senders.size(); ++i) {
-						senders.get(i).sendNext();
-						Utils.sleep(1);
-					}
-				}
-			}
-			
 			Utils.sleep(1);
 		}
 	});
 	
-	protected Client(String serverIP, int serverPort) {
+	public Client(String serverIP, int serverPort) {
 		this.connection   = new Connection(
 			new IPAddress(PortUtils.getLocalIpAddress(), serverPort),
 			new IPAddress(serverIP, serverPort));
@@ -306,12 +354,13 @@ public class Client {
 	}
 	
 	/**
-	 * Creates a client with information for future establishing a connection
-	 * with the server specified by its IP address and its port.
-	 * @param serverIP The server IP address
-	 * @param serverPort The server port
-	 * @return Created client object. Call {@link #connect()} to connect the
-	 * client to the specified server.*/
+	 * Creates a not connected client with information for future establishing
+	 * a connection with the server specified by its IP address and its port.
+	 * To connect this created client the {@link #connect()} method has to be
+	 * called.
+	 * @param serverIP Server IP address
+	 * @param serverPort Server port
+	 * @return Created not connected client object.*/
 	public static Client create(String serverIP, int serverPort) {
 		return new Client(serverIP, serverPort);
 	}
@@ -325,8 +374,7 @@ public class Client {
 	
 	protected void addDataToSend(Data data, String receiver) {
 		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(
-				getIP(), receiver, data));
+			dataToSend.add(FinalData.create(getIP(), receiver, data));
 		}
 	}
 	
@@ -339,7 +387,8 @@ public class Client {
 	}
 	
 	/**
-	 * Connects this client to the server.*/
+	 * Connects this client to the server. This method is run in the same
+	 * thread as it was called.*/
 	public void connect() {
 		if(running) return;
 		
@@ -384,7 +433,8 @@ public class Client {
 	}
 	
 	/**
-	 * Disconnects this client from the server.*/
+	 * Disconnects this client from the server. This method is run in the same
+	 * thread as it was called.*/
 	public void disconnect() {
 		disconnect(true);
 	}
@@ -420,9 +470,8 @@ public class Client {
 	}
 	
 	/**
-	 * Sends a data to the server and waits until
-	 * the data are sent.
-	 * @param data The data to be sent*/
+	 * Sends a data to the server and waits till the data are sent.
+	 * @param data Data to be sent*/
 	public void sendWait(Data data) {
 		waitQueue.add(data);
 		while(waitQueue.peek() != data)
@@ -435,38 +484,42 @@ public class Client {
 	}
 	
 	/**
-	 * Sends a status to the server and waits until
-	 * the status is sent.
-	 * @param status The status to be sent*/
+	 * Sends a status to the server and waits till the status is sent.
+	 * @param status Status to be sent*/
 	public void sendWait(Status status) {
 		sendWait(new StatusData(status));
 	}
 	
 	/**
-	 * Sends a data to the server.
-	 * @param data The data to be sent*/
+	 * Sends a data to the server. This method does not wait till
+	 * the data are sent.
+	 * @param data Data to be sent*/
 	public void send(Data data) {
 		send(data, RECEIVER_ALL);
 	}
 	
+	/**
+	 * Sends a data to the client specified by its IP address. This method
+	 * does not wait till the data are sent.
+	 * @param data Data to be sent
+	 * @param receiver IP address of the client to which the data should be
+	 * sent.*/
 	public void send(Data data, String receiver) {
 		addDataToSend(data, receiver);
 	}
 	
 	/**
-	 * Sends a status to the server.
-	 * @param status The status to be sent*/
+	 * Sends a status to the server. This method does not wait till the status
+	 * is sent.
+	 * @param status Status to be sent*/
 	public void send(Status status) {
 		send(new StatusData(status));
 	}
 	
-	public void send(String message) {
-		send(new Message(message, username));
-	}
-	
 	/**
-	 * Sends a file to the server.
-	 * @param file The file to be sent*/
+	 * Sends a file to the server. This method does not wait till the file
+	 * is sent.
+	 * @param file File to be sent*/
 	public void sendFile(File file) {
 		synchronized(filesToSend) {
 			filesToSend.add(file);
@@ -474,8 +527,9 @@ public class Client {
 	}
 	
 	/**
-	 * Sends multiple files to the server.
-	 * @param files The files to be sent*/
+	 * Sends multiple files to the server. This method does not wait till the files
+	 * are sent.
+	 * @param files Files to be sent*/
 	public void sendFiles(File... files) {
 		for(File file : files) {
 			sendFile(file);
@@ -484,7 +538,7 @@ public class Client {
 	
 	/**
 	 * Terminates a file transfer by its type and file's hash.
-	 * @param fileHash The hash of file whose transfer should be terminated
+	 * @param fileHash Hash of file whose transfer should be terminated.
 	 * @param type Type of the transfer*/
 	public void terminate(String fileHash, TransferType type) {
 		switch(type) {
@@ -496,9 +550,9 @@ public class Client {
 							receivers.remove(entry.getKey());
 						}
 					}
-					send(new TerminationData(
-						fileHash, TransferType.RECEIVE));
 				}
+				send(new TerminationData(
+					fileHash, TransferType.RECEIVE));
 				break;
 			case SEND:
 				synchronized(senders) {
@@ -506,12 +560,12 @@ public class Client {
 						FileSender sender = senders.get(i);
 						if(sender.getHash().equals(fileHash)) {
 							sender.close();
-							senders.remove(i);
+							senders.remove(i--);
 						}
 					}
-					send(new TerminationData(
-						fileHash, TransferType.SEND));
 				}
+				send(new TerminationData(
+					fileHash, TransferType.SEND));
 				break;
 		}
 	}
@@ -544,34 +598,61 @@ public class Client {
 		return connection.getSource().getIPv6();
 	}
 	
+	/**
+	 * Gets this client's port that is used to communicate with the server.
+	 * @return This client's port that is used to communicate with the
+	 * server.*/
 	public int getPort() {
 		return connection.getSource().getPort();
 	}
 	
+	/**
+	 * Gets IP address of the server to which this client is connected.
+	 * @return IP address of the server to which this client is connected.*/
 	public String getServerIP() {
 		return connection.getDestination().getIPv6();
 	}
 	
+	/**
+	 * Gets port of the server to which this client is connected.
+	 * @return Port of the server to which this client is connected.*/
 	public int getServerPort() {
 		return connection.getDestination().getPort();
 	}
 	
+	/**
+	 * Gets information about if this client is secured or not.
+	 * @return True, if the client is secured, otherwise not.*/
 	public boolean isSecure() {
 		return false;
 	}
 	
+	/**
+	 * Binds an event listener to an event.
+	 * @param <E> Type of the value parameter.
+	 * @param type Event to which bind the event listener.
+	 * @param listener Listener that should be bound to the event.*/
 	public <E> void addListener(
 			EventType<ClientEvent, E> type, Listener<E> listener) {
 		eventRegistry.add(type, listener);
 	}
 	
+	/**
+	 * Unbinds an event listener from an event.
+	 * @param <E> Type of the value parameter.
+	 * @param type Event from which unbind the event listener.
+	 * @param listener Listener that should be unbound from the event.*/
 	public <E> void removeListener(
 			EventType<ClientEvent, E> type, Listener<E> listener) {
 		eventRegistry.remove(type, listener);
 	}
 	
 	private void ensureFileReceiver(String hash, String name, long size, String senderIP) {
-		if(!receivers.containsKey(hash)) {
+		boolean contains = false;
+		synchronized(receivers) {
+			contains = receivers.containsKey(hash);
+		}
+		if(!contains) {
 			FileReceiver fileReceiver = new FileReceiver(
 				hash, name, size, senderIP);
 			fileReceiver.init(new Receiver() {
@@ -608,7 +689,9 @@ public class Client {
 				}
 			});
 		} else if(name != null) {
-			receivers.get(hash).setName(name);
+			synchronized(receivers) {
+				receivers.get(hash).setName(name);
+			}
 		}
 	}
 	
@@ -622,10 +705,8 @@ public class Client {
 					count_st.get();
 		if(count >= MAX_SEND_TRANSFERS) {
 			while(count >= MAX_SEND_TRANSFERS) {
-				synchronized(senders) {
-					count = senders.size() +
-							count_st.get();
-				}
+				count = senders.size() +
+						count_st.get();
 				Utils.sleep(1);
 			}
 		}
@@ -639,6 +720,7 @@ public class Client {
 			waitToCorrectAmountST();
 		}
 	}
+	
 	private void createFileSender0(File file) {
 		waitToCorrectAmountST();
 		FileSender fileSender = new FileSender(file);
@@ -657,7 +739,9 @@ public class Client {
 			
 			@Override
 			public void end() {
-				senders.remove(fileSender);
+				synchronized(senders) {
+					senders.remove(fileSender);
+				}
 				eventRegistry.call(
 					ClientEvent.FILE_SEND_END, fileSender);
 			}

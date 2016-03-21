@@ -21,18 +21,17 @@ public class SimpleSession implements Session {
 		this.keyPrivate  = keyPrivate;
 	}
 	
+	public static SimpleSession createSession() {
+		KeyPair keys = Crypt.generateRSAKeyPair();
+		return createSession(
+			keys.getPublic(), keys.getPrivate());
+	}
+	
 	public static SimpleSession createSession(
 			PublicKey keyPublic, PrivateKey keyPrivate) {
 		return new SimpleSession(
 			Randomizer.randomString(HASH_LENGTH),
 			keyPublic, keyPrivate);
-	}
-	
-	public static SimpleSession createSession() {
-		KeyPair keys = Crypt.generateRSAKeyPair();
-		return new SimpleSession(
-			Randomizer.randomString(HASH_LENGTH),
-			keys.getPublic(), keys.getPrivate());
 	}
 	
 	@Override

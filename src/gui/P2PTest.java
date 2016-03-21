@@ -1,11 +1,10 @@
 package gui;
 
-import java.net.InetAddress;
-
 import sune.ssp.data.Message;
 import sune.ssp.event.ClientEvent;
 import sune.ssp.event.ServerEvent;
 import sune.ssp.p2p.P2PClient;
+import sune.ssp.util.PortUtils;
 import sune.ssp.util.Utils;
 
 public class P2PTest {
@@ -15,12 +14,7 @@ public class P2PTest {
 	private static final int PORT2 = 8502;
 	
 	public static void main(String[] args) {
-		String ipAddress = null;
-		try {
-			ipAddress = InetAddress.getLocalHost().getHostAddress();
-		} catch(Exception ex) {
-		}
-		
+		String ipAddress  = PortUtils.getLocalIpAddress();
 		P2PClient client0 = P2PClient.create(PORT0, "simplepassword0");
 		P2PClient client1 = P2PClient.create(PORT1, "simplepassword1");
 		P2PClient client2 = P2PClient.create(PORT2, "simplepassword2");

@@ -1,16 +1,17 @@
 package sune.ssp.p2p;
 
-import java.security.SecureRandom;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.function.Consumer;
 
 import sune.ssp.data.Data;
+import sune.ssp.data.Message;
 import sune.ssp.data.Status;
 import sune.ssp.event.ClientEvent;
 import sune.ssp.event.EventType;
 import sune.ssp.event.Listener;
 import sune.ssp.secure.SecureClient;
+import sune.ssp.util.Randomizer;
 
 public class MultiClient {
 	
@@ -24,8 +25,7 @@ public class MultiClient {
 	
 	public MultiClient(String username) {
 		if(username == null) {
-			SecureRandom rand = new SecureRandom();
-			username = "username" + rand.nextLong();
+			username = "username" + Randomizer.nextLong();
 		}
 		this.username = username;
 		this.clients  = new LinkedList<>();
@@ -84,8 +84,9 @@ public class MultiClient {
 	}
 	
 	public void send(String message) {
+		Message msg = new Message(message, username);
 		for(SecureClient client : clients) {
-			client.send(message);
+			client.send(msg);
 		}
 	}
 	

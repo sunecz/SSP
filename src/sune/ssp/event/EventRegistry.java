@@ -14,7 +14,9 @@ public class EventRegistry<T extends IEventType> {
 			throw new IllegalArgumentException(
 				"Event type and listener cannot be null!");
 		}
-		listeners.ensure(type).add(listener);
+		synchronized(listeners) {
+			listeners.ensure(type).add(listener);
+		}
 	}
 	
 	public <E> void remove(EventType<T, E> type, Listener<E> listener) {
@@ -22,7 +24,9 @@ public class EventRegistry<T extends IEventType> {
 			throw new IllegalArgumentException(
 				"Event type and listener cannot be null!");
 		}
-		listeners.ensure(type).remove(listener);
+		synchronized(listeners) {
+			listeners.ensure(type).remove(listener);
+		}
 	}
 	
 	public <E> void call(EventType<T, E> type) {
@@ -39,17 +43,21 @@ public class EventRegistry<T extends IEventType> {
 			throw new IllegalArgumentException(
 				"Event type cannot be null!");
 		}
-		if(listeners.has(type)) {
-			List<Listener<?>> list = listeners.get(type);
-			synchronized(list) {
-				for(Listener<?> listener : list) {
-					((Listener<E>) listener).call(value);
+		synchronized(listeners) {
+			if(listeners.has(type)) {
+				List<Listener<?>> list = listeners.get(type);
+				synchronized(list) {
+					for(Listener<?> listener : list) {
+						((Listener<E>) listener).call(value);
+					}
 				}
 			}
 		}
 	}
 	
 	public void clear() {
-		listeners.clear();
+		synchronized(listeners) {
+			listeners.clear();
+		}
 	}
 }

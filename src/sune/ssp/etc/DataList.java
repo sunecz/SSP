@@ -1,6 +1,7 @@
 package sune.ssp.etc;
 
 import java.io.Serializable;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,6 +52,7 @@ public final class DataList<T extends Serializable> extends Data {
 	}
 	
 	@SuppressWarnings("unchecked")
+	@Deprecated
 	private final T[] getDataArray() {
 		return Utils.copy((T[]) retype(((List<T>) getData("array")).toArray()));
 	}
@@ -62,5 +64,19 @@ public final class DataList<T extends Serializable> extends Data {
 	@SuppressWarnings("unchecked")
 	public Class<T> getItemClass() {
 		return (Class<T>) getData("itemClass");
+	}
+	
+	@SuppressWarnings("unchecked")
+	public final T[] toTypeArray(Class<T> clazz) {
+		Serializable[] array = getData();
+		int length = array.length;
+		T[] narray = (T[]) Array.newInstance(clazz, length);
+		for(int i = 0; i < length; ++i)
+			narray[i] = (T) array[i];
+		return narray;
+	}
+	
+	public boolean isTypeOf(Class<T> clazz) {
+		return getItemClass().isAssignableFrom(clazz);
 	}
 }
