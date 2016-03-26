@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import sune.ssp.data.AcceptData;
+import sune.ssp.data.ClientData;
 import sune.ssp.data.ClientInfo;
 import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
@@ -31,6 +32,7 @@ import sune.ssp.data.StatusData;
 import sune.ssp.data.TerminationData;
 import sune.ssp.etc.Connection;
 import sune.ssp.etc.IPAddress;
+import sune.ssp.etc.Identificator;
 import sune.ssp.event.ClientEvent;
 import sune.ssp.event.EventRegistry;
 import sune.ssp.event.EventType;
@@ -98,10 +100,12 @@ import sune.ssp.util.Waiter;
 public class Client {
 	
 	private static final String UNKNOWN_FILE_NAME = "Unknown name";
-	private static final String RECEIVER_ALL 	  = "";
+	private static final String RECEIVE_ALL 	  = "";
 	
 	private String username;
 	private Connection connection;
+	
+	private Identificator identificator;
 	
 	private Socket socket;
 	private ObjectInputStream reader;
@@ -225,9 +229,13 @@ public class Client {
 									default:
 										break;
 								}
-							}
-							
-							if(data instanceof FileInfoData) {
+							} else if(data instanceof ClientData) {
+								ClientData cd = (ClientData) data;
+								identificator = cd.getIdentificator();
+								eventRegistry.call(
+									ClientEvent.IDENTIFICATOR_RECEIVED);
+								send(new ClientInfo(username));
+							} else if(data instanceof FileInfoData) {
 								FileInfoData fi = (FileInfoData) data;
 								String hash 	= fi.getHash();
 								String name 	= fi.getName();
@@ -328,7 +336,7 @@ public class Client {
 					}
 					
 					if(!senders.isEmpty()) {
-						for(int i = 0; i < senders.size(); ++i) {
+						for(int i = 0, l = senders.size(); i < l; ++i) {
 							senders.get(i).sendNext();
 							Utils.sleep(1);
 						}
@@ -340,7 +348,7 @@ public class Client {
 		}
 	});
 	
-	public Client(String serverIP, int serverPort) {
+	protected Client(String serverIP, int serverPort) {
 		this.connection   = new Connection(
 			new IPAddress(PortUtils.getLocalIpAddress(), serverPort),
 			new IPAddress(serverIP, serverPort));
@@ -374,7 +382,7 @@ public class Client {
 	
 	protected void addDataToSend(Data data, String receiver) {
 		synchronized(dataToSend) {
-			dataToSend.add(FinalData.create(getIP(), receiver, data));
+			dataToSend.add(FinalData.create(identificator, receiver, data));
 		}
 	}
 	
@@ -393,7 +401,7 @@ public class Client {
 		if(running) return;
 		
 		try {
-			if(username == null || username.trim().isEmpty()) {
+			if(username == null || username.isEmpty()) {
 				setUsername(generateUsername());
 			}
 			IPAddress addr = connection.getDestination();
@@ -422,7 +430,6 @@ public class Client {
 			threadReceive.start();
 			threadProcess.start();
 			threadSendFile.start();
-			send(new ClientInfo(username));
 		} catch(SocketException ex) {
 			eventRegistry.call(ClientEvent.CONNECTION_TIMEOUT);
 			disconnect();
@@ -495,7 +502,7 @@ public class Client {
 	 * the data are sent.
 	 * @param data Data to be sent*/
 	public void send(Data data) {
-		send(data, RECEIVER_ALL);
+		send(data, RECEIVE_ALL);
 	}
 	
 	/**
@@ -679,8 +686,10 @@ public class Client {
 				
 				@Override
 				public void receive(byte[] data) {
-					eventRegistry.call(ClientEvent.FILE_DATA_RECEIVED,
-						new FileData(hash, data, size));
+					FileData fileData = new FileData(
+						hash, data, size);
+					eventRegistry.call(
+						ClientEvent.FILE_DATA_RECEIVED, fileData);
 				}
 	
 				@Override

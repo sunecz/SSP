@@ -1,4 +1,4 @@
-package sune.ssp.crypt;
+package sune.ssp.secure;
 
 import java.security.PublicKey;
 

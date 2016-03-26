@@ -1,12 +1,14 @@
 package sune.ssp.etc;
 
+import java.io.Serializable;
 import java.security.SecureRandom;
 import java.util.UUID;
 
 import sune.ssp.util.Randomizer;
 
-public class Identificator {
+public class Identificator implements Serializable {
 	
+	private static final long serialVersionUID = 5482580770803625000L;
 	private static final SecureRandom RANDOM;
 	static {
 		RANDOM = Randomizer.createSecureStrong();
@@ -14,6 +16,10 @@ public class Identificator {
 	
 	private final UUID uuid;
 	private final Object value;
+	
+	public Identificator(Object value) {
+		this(create(value.toString()), value);
+	}
 	
 	public Identificator(UUID uuid, Object value) {
 		this.uuid  = uuid;
@@ -61,6 +67,31 @@ public class Identificator {
 		bitsMost  += randUUID0.getLeastSignificantBits();
 		bitsLeast -= randUUID0.getMostSignificantBits();
 		return new UUID(bitsMost, bitsLeast);
+	}
+	
+	@Override
+	public boolean equals(Object obj) {
+		if(obj instanceof Identificator)
+			return equals((Identificator) obj);
+		if(obj instanceof UUID)
+			return equals((UUID) obj);
+		return super.equals(obj);
+	}
+	
+	public boolean equals(Identificator i) {
+		if(i == null) return false;
+		return (i.uuid.toString().equals(uuid.toString())) &&
+			   (i.value == null ?
+					   value == null :
+					 i.value.equals(value));
+	}
+	
+	public boolean equals(UUID id) {
+		return equals(id.toString());
+	}
+	
+	public boolean equals(String id) {
+		return id != null && id.equals(uuid.toString());
 	}
 	
 	public UUID getUUID() {

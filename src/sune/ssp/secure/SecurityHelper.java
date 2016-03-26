@@ -50,7 +50,7 @@ public final class SecurityHelper {
 			KeyStore key = KeyStore.getInstance(KeyStore.getDefaultType());
 			key.load(stream, chars);
 			
-			KeyManagerFactory kmf = KeyManagerFactory.getInstance(CERTIFICATE_TYPE);
+			KeyManagerFactory kmf 	= KeyManagerFactory.getInstance(CERTIFICATE_TYPE);
 			TrustManagerFactory tmf = TrustManagerFactory.getInstance(CERTIFICATE_TYPE);
 			kmf.init(key, chars);
 			tmf.init(key);

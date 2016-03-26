@@ -1,4 +1,4 @@
-package sune.ssp.crypt;
+package sune.util.crypt;
 
 import java.nio.charset.Charset;
 import java.security.Key;
@@ -10,8 +10,9 @@ import java.security.PublicKey;
 import javax.crypto.Cipher;
 
 import sune.ssp.util.Randomizer;
+import sune.util.encode.Base64;
 
-public final class CryptKey {
+public final class CryptRSA {
 	
 	private static final String  ALGORITHM_CIPHER;
 	private static final Charset CHARSET;
@@ -19,6 +20,14 @@ public final class CryptKey {
 	static {
 		ALGORITHM_CIPHER = "RSA";
 		CHARSET			 = Crypt.CHARSET;
+	}
+	
+	private static final Cipher getCipher() {
+		try {
+			return Cipher.getInstance(ALGORITHM_CIPHER);
+		} catch(Exception ex) {
+		}
+		return null;
 	}
 	
 	private static final boolean checkAction(int action) {
@@ -41,17 +50,18 @@ public final class CryptKey {
 				"Action " + action + " is not supported!");
 		}
 		try {
-			Cipher cipher = Cipher.getInstance(ALGORITHM_CIPHER);
+			Cipher cipher = getCipher();
 			cipher.init(action, key);
 			return cipher.doFinal(string);
 		} catch(Exception ex) {
+			ex.printStackTrace();
 		}
 		return null;
 	}
 	
 	public static final String encrypt(String string, Key key) {
 		try {
-			return Base64.encode(
+			return Base64.encodeString(
 				doAction(
 					string.getBytes(CHARSET),
 					key, Cipher.ENCRYPT_MODE));
@@ -64,7 +74,7 @@ public final class CryptKey {
 		try {
 			return new String(
 				doAction(
-					Base64.decode(string),
+					Base64.decode0(string),
 					key, Cipher.DECRYPT_MODE),
 				CHARSET);
 		} catch(Exception ex) {
@@ -80,11 +90,11 @@ public final class CryptKey {
 		return decrypt(string, (Key) key);
 	}
 	
-	public static final KeyPair generateKeyPair() {
+	public static final KeyPair generateKeyPair(int bits) {
 		try {
 			KeyPairGenerator generator
 				= KeyPairGenerator.getInstance(ALGORITHM_CIPHER);
-			generator.initialize(2048,
+			generator.initialize(bits,
 				Randomizer.createSecureStrong());
 			return generator.generateKeyPair();
 		} catch(Exception ex) {

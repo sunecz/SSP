@@ -1,19 +1,19 @@
-package sune.util.crypt;
+package sune.util.encode;
 
 import java.nio.charset.Charset;
 import java.util.Base64.Decoder;
 import java.util.Base64.Encoder;
 
-public class Base64 {
+public class Base64URL {
 	
 	private static final Encoder ENCODER;
 	private static final Decoder DECODER;
 	private static final Charset CHARSET;
 	
 	static {
-		ENCODER = java.util.Base64.getEncoder();
-		DECODER = java.util.Base64.getDecoder();
-		CHARSET = Crypt.CHARSET;
+		ENCODER = java.util.Base64.getUrlEncoder();
+		DECODER = java.util.Base64.getUrlDecoder();
+		CHARSET = Charset.forName("UTF-8");
 	}
 	
 	public static final byte[] encode(byte[] bytes) {

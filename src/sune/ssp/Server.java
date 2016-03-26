@@ -15,6 +15,7 @@ import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import sune.ssp.data.ClientData;
 import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
@@ -24,8 +25,9 @@ import sune.ssp.data.Status;
 import sune.ssp.data.StatusData;
 import sune.ssp.data.TerminationData;
 import sune.ssp.etc.DataList;
+import sune.ssp.etc.DataListType;
 import sune.ssp.etc.IPAddress;
-import sune.ssp.etc.ListType;
+import sune.ssp.etc.Identificator;
 import sune.ssp.etc.ServerClientInfo;
 import sune.ssp.event.EventRegistry;
 import sune.ssp.event.EventType;
@@ -45,13 +47,13 @@ import sune.ssp.util.Utils;
 
 public class Server {
 	
-	private static final String RECEIVER_ALL = "";
+	private static final String RECEIVE_ALL = "";
 	
 	private IPAddress ipAddress;
 	private ServerSocket server;
 	private volatile boolean running;
 	
-	private Map<String, ServerClient> clients;
+	private Map<Identificator, ServerClient> clients;
 	private Queue<FinalData> dataToSend;
 	
 	private Queue<File> filesToSend;
@@ -63,6 +65,7 @@ public class Server {
 	private Map<String, Integer> sending;
 	
 	private FilesStorage fstorage;
+	private Identificator identificator;
 	
 	private int BUFFER_SIZE = 8192;
 	public void setBufferSize(int size) {
@@ -128,7 +131,7 @@ public class Server {
 				ServerClient client = createClient(socket);
 				
 				if(canConnect(ipAddress)) {
-					String clientIP = client.getIP();
+					Identificator identificator = client.getIdentificator();
 					if(asp != null) {
 						client.setAntiSpamProtection(
 							new AntiSpamProtection(
@@ -136,7 +139,8 @@ public class Server {
 								asp.getMaxAttempts()));
 					}
 					client.send(Status.SUCCESSFULLY_CONNECTED);
-					addClient(clientIP, client);
+					client.send(new ClientData(identificator));
+					addClient(identificator, client);
 					eventRegistry.call(
 						ServerEvent.CLIENT_CONNECTED, client);
 				} else {
@@ -155,15 +159,16 @@ public class Server {
 			synchronized(dataToSend) {
 				if(!dataToSend.isEmpty()) {
 					FinalData data  = dataToSend.poll();
-					String senderIP = data.getSenderIP();
 					String receiver = data.getReceiver();
+					String uuid		= data.getUUID();
 					boolean useRecv = !receiver.isEmpty();
 					synchronized(clients) {
 						for(ServerClient client : clients.values()) {
 							String clientIP = client.getIP();
+							Identificator i = client.getIdentificator();
 							if((forceSend) || (
 							   (useRecv  && clientIP.equals(receiver)) ||
-							   (!useRecv && !clientIP.equals(senderIP)))) {
+							   (!useRecv && !i.equals(uuid)))) {
 								client.send(data);
 							}
 						}
@@ -188,9 +193,9 @@ public class Server {
 								switch(status) {
 									case DISCONNECTED_BY_USER:
 										String clientIP 	 = data.getSenderIP();
-										ServerClient sclient = clients.get(clientIP);
+										ServerClient sclient = getClientByIP(clientIP);
 										sclient.close();
-										removeClient(clientIP);
+										removeClient0(clientIP);
 										eventRegistry.call(
 											ServerEvent.CLIENT_DISCONNECTED, sclient);
 										break;
@@ -274,7 +279,7 @@ public class Server {
 					}
 					
 					if(!senders.isEmpty()) {
-						for(int i = 0; i < senders.size(); ++i) {
+						for(int i = 0, l = senders.size(); i < l; ++i) {
 							senders.get(i).sendNext();
 							Utils.sleep(1);
 						}
@@ -286,7 +291,7 @@ public class Server {
 		}
 	});
 	
-	public Server(String ipAddress, int port) {
+	protected Server(String ipAddress, int port) {
 		this.ipAddress    	 = new IPAddress(ipAddress, port);
 		this.clients      	 = new LinkedHashMap<>();
 		this.dataToSend   	 = new ConcurrentLinkedQueue<>();
@@ -313,8 +318,10 @@ public class Server {
 		return new ServerClient(this, socket);
 	}
 	
-	protected void addDataToSend(Data data, String senderIP, String receiver) {
-		dataToSend.add(FinalData.create(senderIP, receiver, data));
+	protected void addDataToSend(Data data, String senderIP, String uuid, String receiver) {
+		synchronized(dataToSend) {
+			dataToSend.add(FinalData.create(senderIP, uuid, receiver, data));
+		}
 	}
 	
 	public void start() {
@@ -323,6 +330,7 @@ public class Server {
 		try {
 			server 		   = createSocket(ipAddress.getPort());
 			fstorage	   = FilesStorage.create(PathSystem.getFullPath("files"));
+			identificator  = new Identificator(SERVER_NAME);
 			running 	   = true;
 			threadAccept   = new Thread(runAccept);
 			threadSend	   = new Thread(runSend);
@@ -344,7 +352,7 @@ public class Server {
 		synchronized(clients) {
 			if(!clients.isEmpty()) {
 				// Close and remove the clients properly
-				Iterator<Entry<String, ServerClient>> it
+				Iterator<Entry<Identificator, ServerClient>> it
 					= clients.entrySet().iterator();
 				while(it.hasNext()) {
 					ServerClient client = it.next().getValue();
@@ -381,10 +389,10 @@ public class Server {
 	
 	protected void disconnect(String ipAddress, Status status) {
 		synchronized(clients) {
-			if(clients.containsKey(ipAddress)) {
-				ServerClient client = clients.get(ipAddress);
+			if(hasClientByIP(ipAddress)) {
+				ServerClient client = getClientByIP(ipAddress);
 				client.close(status);
-				removeClient(ipAddress);
+				removeClient0(ipAddress);
 				eventRegistry.call(
 					ServerEvent.CLIENT_DISCONNECTED, client);
 			}
@@ -392,15 +400,19 @@ public class Server {
 	}
 	
 	public void send(Data data) {
-		send(data, SERVER_NAME, RECEIVER_ALL);
+		send(data, SERVER_NAME, RECEIVE_ALL);
 	}
 	
 	protected void send(Data data, String senderIP) {
-		send(data, senderIP, RECEIVER_ALL);
+		send(data, senderIP, RECEIVE_ALL);
 	}
 	
 	protected void send(Data data, String senderIP, String receiver) {
-		addDataToSend(data, senderIP, receiver);
+		addDataToSend(data, senderIP,
+			senderIP.equals(SERVER_NAME) ?
+				identificator.getUUID().toString() :
+				getClientUUID(senderIP),
+			receiver);
 	}
 	
 	public void send(Status status) {
@@ -424,7 +436,7 @@ public class Server {
 	}
 	
 	@SuppressWarnings("unchecked")
-	public <T extends Serializable> DataList<T> createList(ListType type) {
+	public <T extends Serializable> DataList<T> createList(DataListType type) {
 		switch(type) {
 			case CONNECTED_CLIENTS:
 				synchronized(clients) {
@@ -435,6 +447,9 @@ public class Server {
 						ServerClientInfo data
 							= new ServerClientInfo(
 								client.getIP(),
+								client.getIdentificator()
+									  .getUUID()
+									  .toString(),
 								client.getUsername());
 						array[i++] = data;
 					}
@@ -447,7 +462,7 @@ public class Server {
 		return null;
 	}
 	
-	public void sendList(ListType type) {
+	public void sendList(DataListType type) {
 		sendList(createList(type));
 	}
 	
@@ -456,17 +471,19 @@ public class Server {
 			throw new IllegalArgumentException(
 				"Data list cannot be null!");
 		}
-		for(ServerClient client : clients.values()) {
-			sendList(client, list);
+		synchronized(clients) {
+			for(ServerClient client : clients.values()) {
+				sendList(client, list);
+			}
 		}
 	}
 	
-	public void sendList(ServerClient client, ListType type) {
+	public void sendList(ServerClient client, DataListType type) {
 		sendList(client, createList(type));
 	}
 	
 	public <T extends Serializable> void sendList(ServerClient client, DataList<T> list) {
-		client.send(list);
+		client.send(list.inject(identificator, client.getIP()));
 	}
 	
 	protected void terminateFor(ServerClient client, String fileHash, boolean self) {
@@ -495,9 +512,7 @@ public class Server {
 	public void terminate(String ipAddress, String fileHash, TransferType type) {
 		switch(type) {
 			case RECEIVE:
-				synchronized(clients) {
-					clients.get(ipAddress).terminate(fileHash, type);
-				}
+				getClientByIP(ipAddress).terminate(fileHash, type);
 				break;
 			case SEND:
 				synchronized(senders) {
@@ -515,16 +530,116 @@ public class Server {
 		}
 	}
 	
-	public ServerClient getClient(String ipAddress) {
+	public ServerClient getClient(String uuid) {
 		synchronized(clients) {
-			return clients.get(ipAddress);
+			Iterator<Entry<Identificator, ServerClient>> it
+				= clients.entrySet().iterator();
+			while(it.hasNext()) {
+				Entry<Identificator, ServerClient> e
+					= it.next();
+				if(e.getKey().equals(uuid))
+					return e.getValue();
+			}
+			return null;
+		}
+	}
+	
+	public String getClientIP(String uuid) {
+		return getClient(uuid).getIP();
+	}
+	
+	public Identificator getClientIdentificator(String ipAddress) {
+		synchronized(clients) {
+			Iterator<Identificator> it
+				= clients.keySet().iterator();
+			while(it.hasNext()) {
+				Identificator i = it.next();
+				if(((String) i.getValue()).equals(ipAddress))
+					return i;
+			}
+			return null;
+		}
+	}
+	
+	public ServerClient getClientByIP(String ipAddress) {
+		synchronized(clients) {
+			Iterator<ServerClient> it
+				= clients.values().iterator();
+			while(it.hasNext()) {
+				ServerClient c = it.next();
+				if(c.getIP().equals(ipAddress))
+					return c;
+			}
+			return null;
 		}
 	}
 	
 	public String getClientUsername(String ipAddress) {
+		Identificator identificator
+			= getClientIdentificator(ipAddress);
+		return identificator == null ? ipAddress :
+			getClient(identificator.getUUID().toString()).getUsername();
+	}
+	
+	public String getClientUUID(String ipAddress) {
+		Identificator identificator
+			= getClientIdentificator(ipAddress);
+		return identificator == null ? null :
+			identificator.getUUID().toString();
+	}
+	
+	public boolean hasClient(String uuid) {
 		synchronized(clients) {
-			return clients.containsKey(ipAddress) ?
-				clients.get(ipAddress).getIP() : ipAddress;
+			Iterator<Identificator> it
+				= clients.keySet().iterator();
+			while(it.hasNext()) {
+				if(it.next().equals(uuid))
+					return true;
+			}
+			return false;
+		}
+	}
+	
+	public boolean hasClientByIP(String ipAddress) {
+		synchronized(clients) {
+			Iterator<ServerClient> it
+				= clients.values().iterator();
+			while(it.hasNext()) {
+				ServerClient c = it.next();
+				if(c.getIP().equals(ipAddress))
+					return true;
+			}
+			return false;
+		}
+	}
+	
+	public boolean removeClient(String uuid) {
+		synchronized(clients) {
+			Iterator<Entry<Identificator, ServerClient>> it
+				= clients.entrySet().iterator();
+			while(it.hasNext()) {
+				if(it.next().getKey().equals(uuid)) {
+					it.remove();
+					return true;
+				}
+			}
+			return false;
+		}
+	}
+	
+	public boolean removeClientByIP(String ipAddress) {
+		synchronized(clients) {
+			Iterator<Entry<Identificator, ServerClient>> it
+				= clients.entrySet().iterator();
+			while(it.hasNext()) {
+				if(it.next().getValue()
+							.getIP()
+							.equals(ipAddress)) {
+					it.remove();
+					return true;
+				}
+			}
+			return false;
 		}
 	}
 	
@@ -545,8 +660,10 @@ public class Server {
 	}
 	
 	public List<ServerClient> getClients() {
-		return Collections.unmodifiableList(
-			new ArrayList<>(Utils.mapToList(clients)));
+		synchronized(clients) {
+			return Collections.unmodifiableList(
+				new ArrayList<>(Utils.mapToList(clients)));
+		}
 	}
 	
 	public ListMap<ServerClient, String> getAcceptedFiles() {
@@ -555,6 +672,10 @@ public class Server {
 	
 	public ListMap<ServerClient, String> getTerminatedFiles() {
 		return terminatedFiles;
+	}
+	
+	public Identificator getIdentificator() {
+		return identificator;
 	}
 	
 	public boolean isSecure() {
@@ -571,18 +692,16 @@ public class Server {
 		eventRegistry.remove(type, listener);
 	}
 	
-	void addClient(String clientIP, ServerClient client) {
+	void addClient(Identificator identificator, ServerClient client) {
 		synchronized(clients) {
-			clients.put(clientIP, client);
+			clients.put(identificator, client);
 		}
-		sendList(ListType.CONNECTED_CLIENTS);
+		//sendList(DataListType.CONNECTED_CLIENTS);
 	}
 	
-	void removeClient(String clientIP) {
-		synchronized(clients) {
-			clients.remove(clientIP);
-		}
-		sendList(ListType.CONNECTED_CLIENTS);
+	void removeClient0(String clientIP) {
+		removeClient(clientIP);
+		sendList(DataListType.CONNECTED_CLIENTS);
 	}
 	
 	protected void accept(ServerClient client, String hash) {
@@ -601,9 +720,10 @@ public class Server {
 	}
 	
 	protected boolean canConnect(String ipAddress) {
-		synchronized(clients) {
-			return !clients.containsKey(ipAddress);
-		}
+		Identificator identificator
+			= getClientIdentificator(ipAddress);
+		return identificator == null ||
+			!hasClient(identificator.getUUID().toString());
 	}
 	
 	private boolean waitTillAccepted(ServerClient client, StorageFile file) {
@@ -684,11 +804,13 @@ public class Server {
 			return;
 		}
 		FileSender fileSender = new FileSender(file);
-		String hash = fileSender.getHash();
-		String name = file.getName();
-		long size	= fileSender.getTotalSize();
+		String clientIP = client.getIP();
+		String hash 	= fileSender.getHash();
+		String name 	= file.getName();
+		long size		= fileSender.getTotalSize();
 		client.sendWait(new FileInfoData(
-			hash, name, size, SEND_WAIT_TIME));
+				hash, name, size, SEND_WAIT_TIME)
+			.inject(identificator, clientIP));
 		
 		List<String> accepted 	= acceptedFiles.ensure(client);
 		List<String> terminated = terminatedFiles.ensure(client);
@@ -737,8 +859,12 @@ public class Server {
 					}
 					
 					if(data instanceof FileData) {
-						if(!banned.contains(hash))
-							client.send(data);
+						boolean has = false;
+						synchronized(banned) {
+							has = banned.contains(hash);
+						}
+						if(!has) client.send(
+							data.inject(identificator, clientIP));
 						eventRegistry.call(
 							ServerEvent.FILE_DATA_SENT, fileSender);
 					}

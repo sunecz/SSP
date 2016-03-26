@@ -1,6 +1,7 @@
 package sune.ssp.event;
 
 import sune.ssp.ServerClient;
+import sune.ssp.data.ClientInfo;
 import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfo;
@@ -24,4 +25,6 @@ public final class ServerEvent implements IEventType {
 	public static final EventType<ServerEvent, Object> 		 CANNOT_START  			  = new EventType<>();
 	public static final EventType<ServerEvent, Object> 		 STOPPED 				  = new EventType<>();
 	public static final EventType<ServerEvent, Object> 		 CANNOT_STOP 			  = new EventType<>();
+	
+	public static final EventType<ServerEvent, ClientInfo> CLIENT_INFO_RECEIVED	= new EventType<>();
 }

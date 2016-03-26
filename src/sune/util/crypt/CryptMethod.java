@@ -16,7 +16,9 @@ public interface CryptMethod {
 	public byte[] decrypt(byte[] bytes, byte[] key);
 	public String decrypt(String string, String key);
 	public byte[] keyBytes(String key);
-	public String generateKey();
+	public String generateKey(int bits);
+	public String weakKey();
+	public String strongKey();
 	
 	/* ------------------------------------------
 	 * |										|

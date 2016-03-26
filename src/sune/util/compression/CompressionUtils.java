@@ -5,7 +5,7 @@ import java.io.OutputStream;
 
 public class CompressionUtils {
 	
-	public static final void transferBytes(InputStream  istream,
+	public static final void transferBytes(InputStream istream,
 			OutputStream ostream, int bufferSize) {
 		try {
 			int    read	  = 0;

@@ -584,7 +584,7 @@ public class WindowClient {
 						stage,
 						String.format(
 							"Would you like to receive file %s (%s) from %s?",
-							name, UnitHelper.byteToCorrectUnit(totalSize, 2), senderIP),
+							name, UnitHelper.formatSize(totalSize, 2), senderIP),
 						"Receive file",
 						ButtonType.YES,
 						ButtonType.NO);
@@ -616,9 +616,8 @@ public class WindowClient {
 		});
 		client.addListener(ClientEvent.DATA_RECEIVED, (data) -> {
 			if(data instanceof DataList) {
-				DataList<?> list   = (DataList<?>) data;
-				Class<?> itemClass = list.getItemClass();
-				if(itemClass == ServerClientInfo.class) {
+				DataList<?> list = (DataList<?>) data;
+				if(list.isTypeOf(ServerClientInfo.class)) {
 					updateClients((DataList<ServerClientInfo>) list);
 				}
 			} else if(data instanceof Message) {

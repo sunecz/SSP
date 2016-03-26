@@ -6,12 +6,18 @@ public class ServerClientInfo extends Data {
 	
 	private static final long serialVersionUID = 2611084921759964621L;
 
-	public ServerClientInfo(String ipAddress, String username) {
-		super("ipAddress", ipAddress, "username", username);
+	public ServerClientInfo(String ipAddress, String uuid, String username) {
+		super("ipAddress", ipAddress,
+			  "uuid",	   uuid,
+			  "username",  username);
 	}
 	
 	public String getIP() {
 		return (String) getData("ipAddress");
+	}
+	
+	public String getUUID() {
+		return (String) getData("uuid");
 	}
 	
 	public String getUsername() {

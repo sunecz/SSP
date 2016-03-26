@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import sune.ssp.etc.Identificator;
+import sune.ssp.util.DateHelper;
 import sune.ssp.util.TypeUtils;
 
 public class Data implements Serializable, Comparable<Object> {
@@ -19,6 +21,7 @@ public class Data implements Serializable, Comparable<Object> {
 	private static final String PROPERTY_SENDERIP = "senderIP";
 	private static final String PROPERTY_DATETIME = "dateTime";
 	private static final String PROPERTY_RECEIVER = "receiver";
+	private static final String PROPERTY_UUID	  = "uuid";
 	
 	private static final Map<String, Object> mk_propMap(Object... values) {
 		if((values.length & 1) == 1) {
@@ -26,7 +29,6 @@ public class Data implements Serializable, Comparable<Object> {
 				"Number of values should be even! Every name " +
 				"needs its value.");
 		}
-		
 		String key = null;
 		Map<String, Object> map = new LinkedHashMap<>();
 		for(int i = 0, k = 0, l = values.length; i < l; ++i) {
@@ -71,6 +73,10 @@ public class Data implements Serializable, Comparable<Object> {
 		values.put(PROPERTY_RECEIVER, receiver);
 	}
 	
+	void setUUID(String uuid) {
+		values.put(PROPERTY_UUID, uuid);
+	}
+	
 	protected void setData(String name, Object value) {
 		if(values.containsKey(name)) {
 			values.put(name, value);
@@ -93,15 +99,12 @@ public class Data implements Serializable, Comparable<Object> {
 		return (String) getData(PROPERTY_RECEIVER);
 	}
 	
-	Map<String, Object> getPropMap() {
-		return values;
+	public String getUUID() {
+		return (String) getData(PROPERTY_UUID);
 	}
 	
-	/**
-	 * Use <code>data.cast() instanceof [clazz]</code> instead.*/
-	@Deprecated
-	public boolean instanceOf(Class<? extends Data> clazz) {
-		return ((Class<?>) getData(PROPERTY_CLASS)).getName().equals(clazz.getName());
+	Map<String, Object> getPropMap() {
+		return values;
 	}
 	
 	@Override
@@ -146,11 +149,11 @@ public class Data implements Serializable, Comparable<Object> {
 				if(!name.equals(PROPERTY_RECEIVER) &&
 				   !name.equals(PROPERTY_SENDERIP) &&
 				   !name.equals(PROPERTY_DATETIME) &&
-				   !name.equals(PROPERTY_CLASS)) {
+				   !name.equals(PROPERTY_CLASS)	   &&
+				   !name.equals(PROPERTY_UUID)) {
 					list.add(e.getValue());
 				}
 			}
-			
 			Object[] values    = list.toArray();
 			Class<?>[] classes = TypeUtils.recognizeClasses(values);
 			Constructor<?> cst = clazz.getDeclaredConstructor(classes);
@@ -159,9 +162,19 @@ public class Data implements Serializable, Comparable<Object> {
 			T instance 		   = (T) cst.newInstance(values);
 			instance.setSenderIP(data.getSenderIP());
 			instance.setDateTime(data.getDateTime());
+			instance.setReceiver(data.getReceiver());
+			instance.setUUID(data.getUUID());
 			return instance;
 		} catch(Exception ex) {
 		}
 		return (T) data;
+	}
+	
+	public final Data inject(Identificator identificator, String receiver) {
+		setSenderIP(identificator.getValue().toString());
+		setUUID(identificator.getUUID().toString());
+		setDateTime(DateHelper.getCurrentDate());
+		setReceiver(receiver);
+		return this;
 	}
 }

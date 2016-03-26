@@ -70,7 +70,7 @@ public class FileTableInfo {
 	public String getType() { return Utils.fancyEnumName(type); }
 	public String getStatus() {
 		return String.format("%s/s (%.2f%%)",
-			UnitHelper.byteToCorrectUnit(this.speed, 2),
+			UnitHelper.formatSize(this.speed, 2),
 			total > 0 ? (current * 100.0) / total : 100.0);
 	}
 }

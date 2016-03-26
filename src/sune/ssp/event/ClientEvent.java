@@ -3,6 +3,7 @@ package sune.ssp.event;
 import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfo;
+import sune.ssp.etc.Identificator;
 import sune.ssp.file.FileReceiver;
 import sune.ssp.file.FileSender;
 import sune.ssp.util.DataWaiter;
@@ -24,4 +25,6 @@ public final class ClientEvent implements IEventType {
 	public static final EventType<ClientEvent, Object> 		 CANNOT_CONNECT 		 = new EventType<>();
 	public static final EventType<ClientEvent, Object> 		 DISCONNECTED 			 = new EventType<>();
 	public static final EventType<ClientEvent, Object> 		 CANNOT_DISCONNECT 		 = new EventType<>();
+	
+	public static final EventType<ClientEvent, Identificator> IDENTIFICATOR_RECEIVED = new EventType<>();
 }

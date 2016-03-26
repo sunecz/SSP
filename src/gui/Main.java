@@ -14,6 +14,10 @@ public class Main extends Application {
 	// TODO: Implement a way for custom compression, hashing, crypting
 	// TODO: Comment all the (public/protected) methods and variables
 	// TODO: Instead of IP Address as an identificator of client, use UUID
+	// TODO: Make Reliable Protocol implementation
+	// 			- Sender receives response about the sent data
+	//			- Aka: Was the data received, or not?
+	// TODO: Fix bug with sending files from server to a client
 	
 	static boolean CLIENT;
 	static boolean SERVER;

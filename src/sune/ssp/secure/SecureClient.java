@@ -8,15 +8,12 @@ import java.security.PublicKey;
 import javax.net.ssl.SSLSocket;
 
 import sune.ssp.Client;
-import sune.ssp.crypt.Crypt;
-import sune.ssp.crypt.CryptedData;
-import sune.ssp.crypt.Session;
-import sune.ssp.crypt.SimpleSession;
-import sune.ssp.crypt.SymmetricKey;
 import sune.ssp.data.Data;
 import sune.ssp.data.PublicKeyData;
 import sune.ssp.event.ClientEvent;
 import sune.ssp.util.Serialization;
+import sune.util.crypt.Crypt;
+import sune.util.crypt.CryptMethod;
 
 public class SecureClient extends Client {
 	
@@ -25,17 +22,36 @@ public class SecureClient extends Client {
 	private PublicKey serverPublicKey;
 	private volatile boolean symmetricKeySent;
 	
-	protected SecureClient(String serverIP, int serverPort) {
+	private CryptMethod cryptMethod = Crypt.getAES();
+	
+	protected SecureClient(String serverIP, int serverPort, Session session) {
 		super(serverIP, serverPort);
-		session 	 = SimpleSession.createSession();
-		symmetricKey = Crypt.weakSymmetricKey();
-		addListener(ClientEvent.CONNECTED, (value) -> {
-			send(new PublicKeyData(session.getPublicKey()));
+		this.session 	  = session;
+		this.symmetricKey = generateStrongKey();
+		addListener(ClientEvent.IDENTIFICATOR_RECEIVED, (value) -> {
+			send(new PublicKeyData(this.session.getPublicKey()));
 		});
 	}
 	
 	public static SecureClient create(String serverIP, int serverPort) {
-		return new SecureClient(serverIP, serverPort);
+		return create(serverIP, serverPort, SimpleSession.createSession());
+	}
+	
+	public static SecureClient create(String serverIP, int serverPort,
+			Session session) {
+		return new SecureClient(serverIP, serverPort, session);
+	}
+	
+	protected SymmetricKey generateStrongKey() {
+		if(!Crypt.unlimitedKeySize()) {
+			Crypt.unlimitedKeySize(true);
+		}
+		return new SymmetricKey(cryptMethod.strongKey());
+	}
+	
+	public void setCryptMethod(CryptMethod method) {
+		cryptMethod = method;
+		generateStrongKey();
 	}
 	
 	@Override
@@ -57,7 +73,8 @@ public class SecureClient extends Client {
 				symmetricKeySent ?
 					new CryptedData(
 						symmetricKey,
-						data) :
+						data,
+						cryptMethod) :
 					data,
 				receiver);
 		}
@@ -77,14 +94,16 @@ public class SecureClient extends Client {
 			CryptedData cdata = (CryptedData) data;
 			return Serialization.<Data>
 				deserializeFromString(
-					Crypt.decryptAES(cdata.getData(),
-						symmetricKey.getKey()));
+					cryptMethod.decrypt(
+						cdata.getData(),
+						symmetricKey.getKey()))
+				.cast();
 		}
 		return data;
 	}
 	
 	public void sendSymmetricKey() {
-		sendWait(new CryptedData(serverPublicKey, symmetricKey));
+		sendWait(new CryptedData(serverPublicKey, symmetricKey.getKey()));
 	}
 	
 	@Override

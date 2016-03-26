@@ -2,7 +2,7 @@ package sune.ssp.etc;
 
 import java.io.Serializable;
 
-public enum ListType {
+public enum DataListType {
 	
 	CONNECTED_CLIENTS;
 	

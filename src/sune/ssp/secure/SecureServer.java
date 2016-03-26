@@ -12,12 +12,9 @@ import javax.net.ssl.SSLSocket;
 
 import sune.ssp.Server;
 import sune.ssp.ServerClient;
-import sune.ssp.crypt.CryptedData;
-import sune.ssp.crypt.Session;
-import sune.ssp.crypt.SimpleSession;
-import sune.ssp.crypt.SymmetricKey;
-import sune.ssp.data.Data;
 import sune.ssp.util.PortUtils;
+import sune.util.crypt.Crypt;
+import sune.util.crypt.CryptMethod;
 
 public class SecureServer extends Server {
 	
@@ -25,17 +22,26 @@ public class SecureServer extends Server {
 	private final Session session;
 	private final HashMap<String, PublicKey> publicKeys;
 	private final HashMap<String, SymmetricKey> symmetricKeys;
+	private final CryptMethod cryptMethod;
 	
-	protected SecureServer(String ipAddress, int port, String password) {
+	protected SecureServer(String ipAddress, int port, String password,
+			CryptMethod cryptMethod, Session session) {
 		super(ipAddress, port);
 		this.password	   = password;
-		this.session	   = SimpleSession.createSession();
+		this.session	   = session;
 		this.publicKeys    = new LinkedHashMap<>();
 		this.symmetricKeys = new LinkedHashMap<>();
+		this.cryptMethod   = cryptMethod;
 	}
 	
 	public static SecureServer create(int port, String password) {
-		return new SecureServer(PortUtils.getLocalIpAddress(), port, password);
+		return create(port, password, Crypt.getAES(), SimpleSession.createSession());
+	}
+	
+	public static SecureServer create(int port, String password,
+			CryptMethod cryptMethod, Session session) {
+		return new SecureServer(PortUtils.getLocalIpAddress(), port, password,
+				cryptMethod, session);
 	}
 	
 	@Override
@@ -48,18 +54,6 @@ public class SecureServer extends Server {
 	@Override
 	protected ServerClient createClient(Socket socket) {
 		return new SecureServerClient(this, (SSLSocket) socket);
-	}
-	
-	@Override
-	protected void addDataToSend(Data data, String senderIP, String receiver) {
-		SymmetricKey key;
-		synchronized(symmetricKeys) {
-			if((key = symmetricKeys.get(senderIP)) != null) {
-				// Encrypt the data using client's symmetric key
-				data = new CryptedData(key, data);
-			}
-		}
-		super.addDataToSend(data, senderIP, receiver);
 	}
 	
 	public void addPublicKey(String ipAddress, PublicKey key) {
@@ -92,6 +86,10 @@ public class SecureServer extends Server {
 	
 	protected Session getSession() {
 		return session;
+	}
+	
+	public CryptMethod getCryptMethod() {
+		return cryptMethod;
 	}
 	
 	@Override

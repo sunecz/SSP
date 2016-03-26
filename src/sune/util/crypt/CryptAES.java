@@ -17,6 +17,8 @@ import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 
+import sune.ssp.util.Randomizer;
+import sune.util.encode.Base64;
 import sune.util.hash.HashUtils;
 
 public final class CryptAES implements CryptMethod {
@@ -53,11 +55,6 @@ public final class CryptAES implements CryptMethod {
 			throw new IllegalArgumentException(
 				"Text that should be encrypted or decrypted " +
 				"cannot be null or empty!");
-		}
-		if(key == null || key.length != 16) {
-			throw new IllegalArgumentException(
-				"Encryption and decryption supports only " +
-				"128-bit key (16 characters).");
 		}
 		if(!checkAction(action)) {
 			throw new UnsupportedOperationException(
@@ -125,19 +122,29 @@ public final class CryptAES implements CryptMethod {
 	}
 	
 	@Override
-	public final String generateKey() {
+	public String generateKey(int bits) {
 		try {
 			KeyGenerator generator
 				= KeyGenerator.getInstance(ALGORITHM_KEY);
-			generator.init(128, Randomizer.createSecure());
+			generator.init(bits, Randomizer.createSecure());
 			return HashUtils.toHexString(
 				HashUtils.toNbit(
 					generator.generateKey()
 							 .getEncoded(),
-					128)).substring(0, 16);
+					bits)).substring(0, bits / 8);
 		} catch(Exception ex) {
 		}
 		return null;
+	}
+	
+	@Override
+	public String weakKey() {
+		return generateKey(128);
+	}
+	
+	@Override
+	public String strongKey() {
+		return generateKey(256);
 	}
 	
 	/* ------------------------------------------

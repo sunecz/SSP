@@ -3,7 +3,6 @@ package sune.ssp.etc;
 import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.List;
 
 import sune.ssp.data.Data;
 import sune.ssp.util.Utils;
@@ -22,20 +21,20 @@ public final class DataList<T extends Serializable> extends Data {
 	
 	// Used for casting from Data object and should never be used!
 	@SuppressWarnings({ "unchecked", "unused" })
-	private DataList(ListType type, ArrayList<Serializable> list, Class<T> clazz) {
+	private DataList(DataListType type, ArrayList<Serializable> list, Class<T> clazz) {
 		this(type, (T[]) retype(list.toArray()));
 		setData("itemClass", clazz);
 	}
 	
 	@SafeVarargs
-	protected DataList(ListType type, T... data) {
+	protected DataList(DataListType type, T... data) {
 		super("type", 	   type,
-			  "array", 	   Utils.toList(data),
+			  "array", 	   data,
 			  "itemClass", Serializable.class);
 	}
 	
 	@SafeVarargs
-	public static <T extends Serializable> DataList<T> create(ListType type, T... data) {
+	public static <T extends Serializable> DataList<T> create(DataListType type, T... data) {
 		if(type == null || data == null) {
 			throw new IllegalArgumentException(
 				"List type and/or data cannot be null!");
@@ -47,18 +46,13 @@ public final class DataList<T extends Serializable> extends Data {
 		setData("itemClass", clazz);
 	}
 	
-	public ListType getType() {
-		return (ListType) getData("type");
+	public DataListType getType() {
+		return (DataListType) getData("type");
 	}
 	
 	@SuppressWarnings("unchecked")
-	@Deprecated
-	private final T[] getDataArray() {
-		return Utils.copy((T[]) retype(((List<T>) getData("array")).toArray()));
-	}
-	
 	public T[] getData() {
-		return getDataArray();
+		return Utils.copy((T[]) getData("array"));
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -67,7 +61,8 @@ public final class DataList<T extends Serializable> extends Data {
 	}
 	
 	@SuppressWarnings("unchecked")
-	public final T[] toTypeArray(Class<T> clazz) {
+	public final T[] toTypeArray(Class<?> clazz) {
+		if(isTypeOf(clazz)) return null;
 		Serializable[] array = getData();
 		int length = array.length;
 		T[] narray = (T[]) Array.newInstance(clazz, length);
@@ -76,7 +71,7 @@ public final class DataList<T extends Serializable> extends Data {
 		return narray;
 	}
 	
-	public boolean isTypeOf(Class<T> clazz) {
+	public boolean isTypeOf(Class<?> clazz) {
 		return getItemClass().isAssignableFrom(clazz);
 	}
 }

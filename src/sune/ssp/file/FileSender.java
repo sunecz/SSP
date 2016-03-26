@@ -9,7 +9,6 @@ import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.util.DateHelper;
 import sune.ssp.util.HashHelper;
-import sune.ssp.util.Utils;
 
 public class FileSender {
 	
@@ -20,7 +19,6 @@ public class FileSender {
 	private File file;
 	private String hash;
 	private String time;
-	private boolean send;
 	
 	private long current;
 	private long total;
@@ -29,7 +27,6 @@ public class FileSender {
 		this.file 	 = file;
 		this.hash	 = HashHelper.sha1(file);
 		this.time	 = DateHelper.getCurrentDate();
-		this.send 	 = true;
 		this.current = 0;
 		this.total 	 = file.length();
 	}
@@ -64,7 +61,7 @@ public class FileSender {
 					total));
 				current += read;
 			} else {
-				close0();
+				close();
 				sender.end();
 			}
 		} catch(Exception ex) {
@@ -83,31 +80,7 @@ public class FileSender {
 		}
 	}
 	
-	@Deprecated
-	public void sendAll(Sender sender, int bufferSize) {
-		try {
-			byte[] buffer = new byte[bufferSize];
-			try(BufferedInputStream stream = new BufferedInputStream(
-					new FileInputStream(file))) {
-				sender.begin();
-				
-				int read;
-				while(send && (read = stream.read(buffer)) != -1) {
-					sender.send(new FileData(hash,
-						Arrays.copyOf(buffer, read),
-						total));
-					current += read;
-					Utils.sleep(1);
-				}
-			}
-			
-			sender.end();
-		} catch(Exception ex) {
-		}
-	}
-	
 	public void close() {
-		send = false;
 		if(stream != null) {
 			close0();
 		}
@@ -137,7 +110,7 @@ public class FileSender {
 		return sender;
 	}
 	
-	/* Method is used for getting the client's ip address
+	/* This method is used for getting the client's ip address
 	 * at file termination.*/
 	public FileSender copyFor(String ipAddress) {
 		Sender sendercopy = new Sender() {
@@ -151,7 +124,6 @@ public class FileSender {
 				return ipAddress;
 			}
 		};
-		
 		return new FileSender(
 			file, hash, time, current, total, sendercopy);
 	}

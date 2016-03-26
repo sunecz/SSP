@@ -2,7 +2,7 @@ package sune.ssp.util;
 
 public class UnitHelper {
 	
-	public static String byteToCorrectUnit(long bytes, int decimals) {
+	public static String formatSize(long bytes, int decimals) {
 		double factor = 1024;
 		double value  = bytes;
 		int unitType  = 0;
@@ -21,7 +21,7 @@ public class UnitHelper {
 			 unitType == 4 ? " TB" : " B");
 	}
 	
-	public static String millisecondsToCorrectFormat(long milliseconds) {
+	public static String formatTime(long milliseconds) {
 		double _second = 1000;
 		double _minute = 60 * _second;
 		double _hour   = 60 * _minute;

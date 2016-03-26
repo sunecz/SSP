@@ -43,6 +43,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import sune.ssp.Server;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.Message;
@@ -52,12 +53,15 @@ import sune.ssp.file.TransferType;
 import sune.ssp.logger.Logger;
 import sune.ssp.logger.ThreadLogger;
 import sune.ssp.secure.SecureServer;
+import sune.ssp.secure.SimpleSession;
+import sune.ssp.secure.SimpleSession.SessionKey;
 import sune.ssp.util.AntiSpamProtection;
 import sune.ssp.util.Formatter;
 import sune.ssp.util.PortUtils;
 import sune.ssp.util.Resource;
 import sune.ssp.util.Utils;
 import sune.test.matrix.Matrix;
+import sune.util.crypt.Crypt;
 
 public class WindowServer {
 	
@@ -66,7 +70,7 @@ public class WindowServer {
 	private static final String DEFAULT_ADDR 	= PortUtils.getLocalIpAddress();
 	private static final int 	DEFAULT_PORT 	= 2400;
 	private static final int 	DEFAULT_TIMEOUT = 8000;
-	private SecureServer server;
+	private Server server;
 	
 	private Stage stage;
 	private Scene scene;
@@ -421,18 +425,23 @@ public class WindowServer {
 	}
 	
 	public void start(int port) {
-		server = SecureServer.create(port, "somerandompassword");
+		server = SecureServer.create(port, "somerandompassword",
+			Crypt.getAES(), SimpleSession.createSession(SessionKey.RSA_2048));
 		server.setAntiSpamProtection(new AntiSpamProtection(400, 8));
 		server.addListener(ServerEvent.CLIENT_CONNECTED, (client) -> {
-			String clientIP			   = client.getIP();
+			logger.logf("%s is trying to connect to the server!",
+				client.getIP());
+		});
+		server.addListener(ServerEvent.CLIENT_INFO_RECEIVED, (info) -> {
+			String clientIP			   = info.getSenderIP();
 			ClientTableInfo clientInfo = new ClientTableInfo(
-				clientIP, client.getUsername());
+				clientIP, info.getUsername());
 			clientInfos.put(clientIP, clientInfo);
 			Platform.runLater(() -> {
 				tableClients.getItems().add(clientInfo);
 			});
 			logger.logf("%s has been connected to the server!",
-				client.getUsername());
+				info.getUsername());
 		});
 		server.addListener(ServerEvent.CLIENT_ALREADY_CONNECTED, (client) -> {
 			logger.logf("%s has tried to connect to the server, but it is already connected!",

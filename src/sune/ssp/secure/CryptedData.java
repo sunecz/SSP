@@ -1,4 +1,4 @@
-package sune.ssp.crypt;
+package sune.ssp.secure;
 
 import java.security.Key;
 import java.security.PublicKey;
@@ -6,11 +6,13 @@ import java.security.PublicKey;
 import sun.security.rsa.RSAPublicKeyImpl;
 import sune.ssp.data.Data;
 import sune.ssp.util.Serialization;
+import sune.util.crypt.Crypt;
+import sune.util.crypt.CryptMethod;
 
 public class CryptedData extends Data {
 	
 	private static final long serialVersionUID = -781582786177901750L;
-	private static final String encrypt(PublicKey publicKey, SymmetricKey symmetricKey) {
+	private static final String encrypt(PublicKey publicKey, String symmetricKey) {
 		try {
 			return Crypt.encrypt(
 				Serialization
@@ -20,9 +22,10 @@ public class CryptedData extends Data {
 		}
 		return null;
 	}
-	private static final String encrypt(SymmetricKey symmetricKey, Data data) {
+	private static final String encrypt(SymmetricKey symmetricKey, Data data,
+			CryptMethod cryptMethod) {
 		try {
-			return Crypt.encryptAES(
+			return cryptMethod.encrypt(
 				Serialization
 					.serializeToString(data),
 				symmetricKey.getKey());
@@ -43,13 +46,13 @@ public class CryptedData extends Data {
 			  "key",  symmetricKey);
 	}
 	
-	public CryptedData(PublicKey publicKey, SymmetricKey symmetricKey) {
+	public CryptedData(PublicKey publicKey, String symmetricKey) {
 		super("data", encrypt(publicKey, symmetricKey),
 			  "key",  publicKey);
 	}
 	
-	public CryptedData(SymmetricKey symmetricKey, Data data) {
-		super("data", encrypt(symmetricKey, data),
+	public CryptedData(SymmetricKey symmetricKey, Data data, CryptMethod cryptMethod) {
+		super("data", encrypt(symmetricKey, data, cryptMethod),
 			  "key",  symmetricKey);
 	}
 	

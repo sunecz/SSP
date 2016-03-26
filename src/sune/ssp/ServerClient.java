@@ -23,7 +23,9 @@ import sune.ssp.data.Status;
 import sune.ssp.data.StatusData;
 import sune.ssp.data.TerminationData;
 import sune.ssp.etc.Connection;
+import sune.ssp.etc.DataListType;
 import sune.ssp.etc.IPAddress;
+import sune.ssp.etc.Identificator;
 import sune.ssp.event.ServerEvent;
 import sune.ssp.file.FileReceiver;
 import sune.ssp.file.Receiver;
@@ -34,11 +36,13 @@ import sune.ssp.util.Utils;
 public class ServerClient {
 	
 	private static final String UNKNOWN_FILE_NAME = "Unknown name";
-	private static final String RECEIVER_ALL 	  = "";
+	private static final String RECEIVE_ALL 	  = "";
 	
 	protected Server server;
 	private String username;
 	private Connection connection;
+	
+	private Identificator identificator;
 	
 	private Socket socket;
 	private ObjectInputStream reader;
@@ -122,7 +126,13 @@ public class ServerClient {
 								break;
 							}
 							
-							if(data instanceof FileInfoData) {
+							if(data instanceof ClientInfo) {
+								ClientInfo info = (ClientInfo) data;
+								username		= info.getUsername();
+								server.eventRegistry.call(
+									ServerEvent.CLIENT_INFO_RECEIVED, info);
+								server.sendList(DataListType.CONNECTED_CLIENTS);
+							} else if(data instanceof FileInfoData) {
 								FileInfoData fi = (FileInfoData) data;
 								String hash 	= fi.getHash();
 								String name 	= fi.getName();
@@ -177,7 +187,7 @@ public class ServerClient {
 		}
 	});
 	
-	public ServerClient(Server server, Socket socket) {
+	protected ServerClient(Server server, Socket socket) {
 		this.server		   = server;
 		this.socket 	   = socket;
 		this.connection	   = new Connection(
@@ -190,10 +200,11 @@ public class ServerClient {
 		this.dataReceived  = new ConcurrentLinkedQueue<>();
 		this.waitQueue	   = new ConcurrentLinkedQueue<>();
 		this.receivers	   = new LinkedHashMap<>();
+		this.identificator = new Identificator(getIP());
 		this.prepareStreams();
 	}
 	
-	protected void prepareStreams() {
+	protected final void prepareStreams() {
 		try {
 			writer = new ObjectOutputStream(
 				new BufferedOutputStream(
@@ -211,18 +222,6 @@ public class ServerClient {
 			threadReceive.start();
 			threadSend.start();
 			threadProcess.start();
-			
-			while(running) {
-				FinalData fdata;
-				if((fdata = nextData()) != null) {
-					Data data = fdata.toData().cast();
-					if(data instanceof ClientInfo) {
-						username = ((ClientInfo) data).getUsername();
-						break;
-					}
-				}
-				Utils.sleep(1);
-			}
 		} catch(Exception ex) {
 		}
 	}
@@ -273,16 +272,20 @@ public class ServerClient {
 	}
 	
 	public void send(Data data) {
-		send(data, RECEIVER_ALL);
+		send(data, RECEIVE_ALL);
 	}
 	
 	public void send(Data data, String receiver) {
-		send(FinalData.create(server.getServerName(), receiver, data));
+		addDataToSend(data, server.getIdentificator(), receiver);
 	}
 	
-	public void send(FinalData data) {
+	protected void send(FinalData data) {
+		addDataToSend(data.toData(), server.getIdentificator(), data.getReceiver());
+	}
+	
+	protected void addDataToSend(Data data, Identificator identificator, String receiver) {
 		synchronized(dataToSend) {
-			dataToSend.add(data);
+			dataToSend.add(FinalData.create(identificator, receiver, data));
 		}
 	}
 	
@@ -323,6 +326,10 @@ public class ServerClient {
 	
 	public String getUsername() {
 		return username;
+	}
+	
+	public Identificator getIdentificator() {
+		return identificator;
 	}
 	
 	public boolean isSecure() {
