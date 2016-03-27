@@ -5,7 +5,7 @@ import sune.ssp.util.Utils;
 
 public class FileTableInfo {
 	
-	private String senderIP;
+	private String sender;
 	private String hash;
 	private String name;
 	private long current;
@@ -18,13 +18,13 @@ public class FileTableInfo {
 	private long lastSize;
 	private long speed;
 	
-	public FileTableInfo(String senderIP, String hash, String name, long total, TransferType type) {
-		this.senderIP = senderIP;
-		this.hash	  = hash;
-		this.name	  = name;
-		this.current  = 0;
-		this.total	  = total;
-		this.type	  = type;
+	public FileTableInfo(String sender, String hash, String name, long total, TransferType type) {
+		this.sender  = sender;
+		this.hash	 = hash;
+		this.name	 = name;
+		this.current = 0;
+		this.total	 = total;
+		this.type	 = type;
 	}
 	
 	public void update(long current) {
@@ -46,8 +46,8 @@ public class FileTableInfo {
 		return hash;
 	}
 	
-	public String getSenderIP() {
-		return senderIP;
+	public String getSender() {
+		return sender;
 	}
 	
 	public long getCurrentSize() {

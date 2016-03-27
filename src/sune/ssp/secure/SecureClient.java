@@ -22,12 +22,16 @@ public class SecureClient extends Client {
 	private PublicKey serverPublicKey;
 	private volatile boolean symmetricKeySent;
 	
-	private CryptMethod cryptMethod = Crypt.getAES();
+	private CryptMethod cryptMethod;
+	private boolean useStrongKey;
 	
-	protected SecureClient(String serverIP, int serverPort, Session session) {
+	protected SecureClient(String serverIP, int serverPort, Session session,
+			CryptMethod cryptMethod, boolean strongKey) {
 		super(serverIP, serverPort);
+		this.cryptMethod  = cryptMethod;
+		this.useStrongKey = strongKey;
 		this.session 	  = session;
-		this.symmetricKey = generateStrongKey();
+		this.symmetricKey = generateKey();
 		addListener(ClientEvent.IDENTIFICATOR_RECEIVED, (value) -> {
 			send(new PublicKeyData(this.session.getPublicKey()));
 		});
@@ -39,25 +43,39 @@ public class SecureClient extends Client {
 	
 	public static SecureClient create(String serverIP, int serverPort,
 			Session session) {
-		return new SecureClient(serverIP, serverPort, session);
+		return create(serverIP, serverPort, session, Crypt.getAES(), true);
 	}
 	
-	protected SymmetricKey generateStrongKey() {
+	public static SecureClient create(String serverIP, int serverPort,
+			Session session, CryptMethod cryptMethod, boolean strongKey) {
+		return new SecureClient(serverIP, serverPort, session,
+				cryptMethod, strongKey);
+	}
+	
+	protected SymmetricKey generateKey() {
 		if(!Crypt.unlimitedKeySize()) {
 			Crypt.unlimitedKeySize(true);
 		}
-		return new SymmetricKey(cryptMethod.strongKey());
+		return new SymmetricKey(
+			useStrongKey ?
+				cryptMethod.strongKey() :
+				cryptMethod.weakKey());
 	}
 	
 	public void setCryptMethod(CryptMethod method) {
 		cryptMethod = method;
-		generateStrongKey();
+		generateKey();
+	}
+	
+	public void setStrongKey(boolean strongKey) {
+		useStrongKey = strongKey;
+		generateKey();
 	}
 	
 	@Override
 	protected Socket createSocket(String serverIP, int serverPort)
 			throws UnknownHostException, IOException {
-		SSLSocket socket = SecurityHelper.createClient(serverIP, serverPort);
+		SSLSocket socket = SecurityManager.createClient(serverIP, serverPort);
 		socket.setSoTimeout(TIMEOUT);
 		socket.startHandshake();
 		return socket;
@@ -86,7 +104,8 @@ public class SecureClient extends Client {
 			PublicKeyData pkdata = (PublicKeyData) data;
 			serverPublicKey 	 = pkdata.getPublicKey();
 			new Thread(() -> {
-				// Send the symmetric key to the server
+				// Send the symmetric key to the server and
+				// wait till the key is sent.
 				sendSymmetricKey();
 				symmetricKeySent = true;
 			}).start();
@@ -102,8 +121,21 @@ public class SecureClient extends Client {
 		return data;
 	}
 	
-	public void sendSymmetricKey() {
+	void sendSymmetricKey() {
 		sendWait(new CryptedData(serverPublicKey, symmetricKey.getKey()));
+	}
+	
+	public Session getSession() {
+		return session;
+	}
+	
+	public String getKeyAlgorithm() {
+		return String.format(
+			"%s %d-bit",
+			cryptMethod.getName(),
+			useStrongKey ? 
+				cryptMethod.strongKeyBits() :
+				cryptMethod.weakKeyBits());
 	}
 	
 	@Override

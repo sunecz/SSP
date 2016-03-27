@@ -139,12 +139,33 @@ public final class CryptAES implements CryptMethod {
 	
 	@Override
 	public String weakKey() {
-		return generateKey(128);
+		return generateKey(weakKeyBits());
 	}
 	
 	@Override
 	public String strongKey() {
-		return generateKey(256);
+		return generateKey(strongKeyBits());
+	}
+	
+	/* ------------------------------------------
+	 * |										|
+	 * |		  Additional methods			|
+	 * |										|
+	 * ------------------------------------------*/
+	
+	@Override
+	public String getName() {
+		return "AES";
+	}
+	
+	@Override
+	public int weakKeyBits() {
+		return 128;
+	}
+	
+	@Override
+	public int strongKeyBits() {
+		return 256;
 	}
 	
 	/* ------------------------------------------

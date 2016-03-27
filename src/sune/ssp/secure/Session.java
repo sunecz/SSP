@@ -8,4 +8,7 @@ public interface Session {
 	public String decrypt(String string);
 	public String getHash();
 	public PublicKey getPublicKey();
+	
+	public int keyBits();
+	public String getAlgorithmName();
 }

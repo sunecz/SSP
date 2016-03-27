@@ -112,7 +112,7 @@ public class FileSender {
 	
 	/* This method is used for getting the client's ip address
 	 * at file termination.*/
-	public FileSender copyFor(String ipAddress) {
+	public FileSender copyFor(String uuid) {
 		Sender sendercopy = new Sender() {
 			@Override public void begin() 			   { sender.begin(); 	   }
 			@Override public void end() 			   { sender.end(); 		   }
@@ -120,8 +120,8 @@ public class FileSender {
 			@Override public void receive(byte[] data) { sender.receive(data); }
 			
 			@Override
-			public String getSenderIP() {
-				return ipAddress;
+			public String getSender() {
+				return uuid;
 			}
 		};
 		return new FileSender(

@@ -7,42 +7,35 @@ import java.io.InputStream;
 
 public class FileReader {
 	
-	private static final int MAX_MARK 	 = Integer.MAX_VALUE - 8;
-	private static final int BUFFER_SIZE = 8192;
-	
 	private final File file;
-	private final byte[] buffer;
 	private InputStream reader;
-	private boolean initialized;
 	private int current;
 	private long total;
 	
-	protected FileReader(File file, int bufferSize, long totalSize) {
+	private boolean initialized;
+	private boolean closed;
+	
+	protected FileReader(File file, long totalSize) {
 		if(file == null) {
 			throw new IllegalArgumentException(
 				"File object cannot be null!");
 		}
-		if(bufferSize <= 0) {
+		if(totalSize < 0) {
 			throw new IllegalArgumentException(
-				"Buffer size must be non-zero and positive!");
+				"Invalid file's total size! Has to be >= 0.");
 		}
 		this.file 	 = file;
-		this.buffer  = new byte[bufferSize];
 		this.current = 0;
 		this.total 	 = totalSize;
 	}
 	
-	public static FileReader create(File file, long totalSize) {
-		return new FileReader(file, BUFFER_SIZE, totalSize);
-	}
-	
 	public boolean initialize() {
 		if(initialized) return true;
+		if(closed)		return false;
 		if(reader == null) {
 			try {
 				reader = new BufferedInputStream(
 					new FileInputStream(file));
-				reader.mark(MAX_MARK);
 				return initialized = true;
 			} catch(Exception ex) {
 			}
@@ -50,39 +43,29 @@ public class FileReader {
 		return false;
 	}
 	
-	public byte[] read() {
+	public int read(byte[] buffer) {
 		if(initialize()) {
 			try {
 				int read = reader.read(buffer);
-				if(read <= 0) return null;
-				byte[] data = new byte[read];
-				System.arraycopy(buffer, 0, data, 0, read);
+				if(read == -1) return -1;
 				if((current) != -1 &&
 				   (current  += read) >= total) {
 					close();
 				}
-				return data;
+				return read;
 			} catch(Exception ex) {
 			}
 		}
-		return null;
-	}
-	
-	public boolean reset() {
-		if(initialize()) {
-			try {
-				reader.reset();
-				return true;
-			} catch(Exception e) {
-			}
-		}
-		return false;
+		return -1;
 	}
 	
 	public boolean close() {
 		if(initialize()) {
 			try {
-				reader.close();
+				if(reader != null) {
+					reader.close();
+					closed = true;
+				}
 				initialized = false;
 				return true;
 			} catch(Exception ex) {
@@ -98,6 +81,10 @@ public class FileReader {
 	
 	public boolean isRead() {
 		return current >= total;
+	}
+	
+	public boolean isClosed() {
+		return closed;
 	}
 	
 	public int getCurrent() {

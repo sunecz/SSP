@@ -8,5 +8,5 @@ public interface Transfer {
 	public void end();
 	public void send(Data data);
 	public void receive(byte[] data);
-	public String getSenderIP();
+	public String getSender();
 }

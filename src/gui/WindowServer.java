@@ -44,7 +44,6 @@ import javafx.stage.FileChooser.ExtensionFilter;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import sune.ssp.Server;
-import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.Message;
 import sune.ssp.event.ServerEvent;
@@ -65,7 +64,7 @@ import sune.util.crypt.Crypt;
 
 public class WindowServer {
 	
-	private static final String WINDOW_TITLE 	= "SSP Server (Simple-Protocol Test; Secure (TSL) & Encrypted (AES 128bit))";
+	private static final String WINDOW_TITLE 	= "SSP Server (Sune's Simple Protocol)";
 	private static final Image 	WINDOW_ICON  	= Resource.image("/gui/icon.png");
 	private static final String DEFAULT_ADDR 	= PortUtils.getLocalIpAddress();
 	private static final int 	DEFAULT_PORT 	= 2400;
@@ -240,7 +239,7 @@ public class WindowServer {
 			if(fileInfo != null) {
 				String hash = fileInfo.getHash();
 				TransferType type = fileInfo.getTransferType();
-				server.terminate(fileInfo.getSenderIP(), hash, type);
+				server.terminate(fileInfo.getSender(), hash, type);
 				fileInfos.remove(hash);
 				Platform.runLater(() -> {
 					tableTransfers.getItems().remove(fileInfo);
@@ -434,8 +433,9 @@ public class WindowServer {
 		});
 		server.addListener(ServerEvent.CLIENT_INFO_RECEIVED, (info) -> {
 			String clientIP			   = info.getSenderIP();
+			String uuid			   	   = info.getUUID();
 			ClientTableInfo clientInfo = new ClientTableInfo(
-				clientIP, info.getUsername());
+				clientIP, uuid, info.getUsername());
 			clientInfos.put(clientIP, clientInfo);
 			Platform.runLater(() -> {
 				tableClients.getItems().add(clientInfo);
@@ -481,23 +481,24 @@ public class WindowServer {
 				String hash 	= fi.getHash();
 				String name 	= fi.getName();
 				long size 		= fi.getSize();
-				String senderIP = fi.getSenderIP();
+				String sender 	= fi.getUUID();
 				FileTableInfo fInfo = new FileTableInfo(
-					senderIP, hash, name, size, TransferType.RECEIVE);
+					sender, hash, name, size, TransferType.RECEIVE);
 				fileInfos.put(hash, fInfo);
 				Platform.runLater(() -> {
 					tableTransfers.getItems().add(fInfo);
 				});
 				logger.logf("File %s will be sent!", name);
-			} else if(data instanceof FileData) {
-				FileData fd	= (FileData) data;
-				String hash = fd.getHash();
-				int length  = fd.getLength();
-				FileTableInfo fileInfo = fileInfos.get(hash);
-				if(fileInfo != null) {
-					fileInfo.update(
-						fileInfo.getCurrentSize() + length);
-				}
+			}
+		});
+		server.addListener(ServerEvent.FILE_DATA_RECEIVED, (data) -> {
+			String hash = data.getHash();
+			int length  = data.getLength();
+			
+			FileTableInfo fileInfo;
+			if((fileInfo = fileInfos.get(hash)) != null) {
+				fileInfo.update(
+					fileInfo.getCurrentSize() + length);
 				Platform.runLater(() -> {
 					tableTransfers.refresh();
 				});
@@ -555,11 +556,11 @@ public class WindowServer {
 				tableTransfers.getItems().remove(fileInfo);
 			});
 			logger.logf("File receiving %s has been terminated by user (%s)!",
-				value.getName(), value.getSenderIP());
+				value.getName(), value.getSender());
 		});
 		server.addListener(ServerEvent.FILE_SEND_TERMINATED, (value) -> {
 			logger.logf("File sending %s has been terminated for %s!",
-				value.getFile().getName(), value.getSender().getSenderIP());
+				value.getFile().getName(), value.getSender().getSender());
 			if(server.getTerminatedFiles().countForValue(value.getHash()) 
 					== server.getClients().size()) {
 				String hash 	  	   = value.getHash();
@@ -583,7 +584,7 @@ public class WindowServer {
 			for(int i = 0; i < tableTransfers.getItems().size(); i++) {
 				try {
 					FileTableInfo info = tableTransfers.getItems().get(i);
-					if(info.getSenderIP().equals(clientIP)) {
+					if(info.getSender().equals(clientIP)) {
 						final int index = i;
 						Platform.runLater(() -> {
 							tableTransfers.getItems().remove(index);

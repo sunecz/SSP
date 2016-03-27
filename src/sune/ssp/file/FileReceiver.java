@@ -6,7 +6,7 @@ public class FileReceiver {
 	
 	private Receiver receiver;
 	
-	private String senderIP;
+	private String sender;
 	private String hash;
 	private String time;
 	private String name;
@@ -14,13 +14,13 @@ public class FileReceiver {
 	private long current;
 	private long total;
 	
-	public FileReceiver(String hash, String name, long size, String senderIP) {
-		this.senderIP = senderIP;
-		this.hash	  = hash;
-		this.time	  = DateHelper.getCurrentDate();
-		this.name 	  = name;
-		this.current  = 0;
-		this.total 	  = size;
+	public FileReceiver(String hash, String name, long size, String sender) {
+		this.sender  = sender;
+		this.hash	 = hash;
+		this.time	 = DateHelper.getCurrentDate();
+		this.name 	 = name;
+		this.current = 0;
+		this.total 	 = size;
 	}
 	
 	public void init(Receiver receiver) {
@@ -40,8 +40,8 @@ public class FileReceiver {
 		this.name = name;
 	}
 	
-	public String getSenderIP() {
-		return senderIP;
+	public String getSender() {
+		return sender;
 	}
 	
 	public String getHash() {

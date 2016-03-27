@@ -22,6 +22,16 @@ public interface CryptMethod {
 	
 	/* ------------------------------------------
 	 * |										|
+	 * |		  Additional methods			|
+	 * |										|
+	 * ------------------------------------------*/
+	
+	public String getName();
+	public int weakKeyBits();
+	public int strongKeyBits();
+	
+	/* ------------------------------------------
+	 * |										|
 	 * |		  Stream cryptography			|
 	 * |										|
 	 * ------------------------------------------*/

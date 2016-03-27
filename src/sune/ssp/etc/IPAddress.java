@@ -26,7 +26,7 @@ public class IPAddress {
 	public IPAddress(String ipAddress, int port) {
 		if(ipAddress == null || ipAddress.isEmpty()) {
 			throw new IllegalArgumentException(
-				"IP Address cannot be null or empty!");
+				"IP Address cannot be null nor empty!");
 		}
 		if(!isValidPort(port)) {
 			throw new IllegalArgumentException(
@@ -56,7 +56,7 @@ public class IPAddress {
 				for(int i = 0, k = 0; i < 8; ++i, k+=2) {
 					String part = parts[i];
 					short value = Short.parseShort(part, 16);
-					raw[k] 	    = (byte) (value & 0xffff);
+					raw[k] 	    = (byte) ((value)	   & 0xffff);
 					raw[k+1]    = (byte) ((value >> 8) & 0xffff);
 				}
 			}
@@ -93,7 +93,7 @@ public class IPAddress {
 	}
 	
 	public Connection createConnection(String dest) {
-		return createConnection(dest, -1);
+		return createConnection(dest, 0);
 	}
 	
 	public Connection createConnection(String dest, int port) {

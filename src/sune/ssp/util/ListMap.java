@@ -86,7 +86,9 @@ public class ListMap<T, E> {
 		}
 		synchronized(map) {
 			for(List<E> list : map.values()) {
-				list.remove(value);
+				synchronized(list) {
+					list.remove(value);
+				}
 			}
 		}
 	}
@@ -99,8 +101,10 @@ public class ListMap<T, E> {
 		synchronized(map) {
 			int count = 0;
 			for(List<E> list : map.values()) {
-				if(list.contains(value))
-					++count;
+				synchronized(list) {
+					if(list.contains(value))
+						++count;
+				}
 			}
 			return count;
 		}

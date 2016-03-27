@@ -122,7 +122,7 @@ public class ServerClient {
 							// Anti-spam protection
 							if(asp != null && asp.check(data)) {
 								server.disconnect(
-									getIP(), Status.DISCONNECTED_BY_SPAM);
+									getUUID(), Status.DISCONNECTED_BY_SPAM);
 								break;
 							}
 							
@@ -131,24 +131,23 @@ public class ServerClient {
 								username		= info.getUsername();
 								server.eventRegistry.call(
 									ServerEvent.CLIENT_INFO_RECEIVED, info);
+								server.sendServerIdentificator(this);
 								server.sendList(DataListType.CONNECTED_CLIENTS);
 							} else if(data instanceof FileInfoData) {
 								FileInfoData fi = (FileInfoData) data;
 								String hash 	= fi.getHash();
 								String name 	= fi.getName();
 								long size 		= fi.getSize();
-								String senderIP = fi.getSenderIP();
-								ensureFileReceiver(hash, name, size, senderIP);
+								String sender 	= fi.getUUID();
+								ensureFileReceiver(hash, name, size, sender);
 							} else if(data instanceof FileData) {
-								FileData fd		= (FileData) data;
-								String hash 	= fd.getHash();
-								long total 		= fd.getTotalSize();
-								String senderIP = fd.getSenderIP();
-								ensureFileReceiver(hash, null, total, senderIP);
-								synchronized(receivers) {
-									FileReceiver receiver = receivers.get(hash);
-									receiver.receive(fd.getRawData());
-								}
+								FileData fd	  = (FileData) data;
+								String hash   = fd.getHash();
+								long total    = fd.getTotalSize();
+								String sender = fd.getUUID();
+								FileReceiver receiver = ensureFileReceiver(
+									hash, null, total, sender);
+								receiver.receive(fd.getRawData());
 							} else if(data instanceof TerminationData) {
 								TerminationData td = (TerminationData) data;
 								TransferType type  = td.getType();
@@ -332,24 +331,32 @@ public class ServerClient {
 		return identificator;
 	}
 	
+	public String getUUID() {
+		return identificator != null ?
+			identificator.getUUID().toString() : null;
+	}
+	
 	public boolean isSecure() {
 		return false;
 	}
 	
-	private void ensureFileReceiver(String hash, String name, long size, String senderIP) {
-		boolean contains = false;
+	private FileReceiver ensureFileReceiver(String hash, String name, long size, String sender) {
+		FileReceiver fileReceiver = null;
+		boolean contains 		  = false;
 		synchronized(receivers) {
 			contains = receivers.containsKey(hash);
 		}
 		if(!contains) {
-			FileReceiver fileReceiver = new FileReceiver(
-				hash, name, size, senderIP);
+			fileReceiver = new FileReceiver(
+				hash, name, size, sender);
+			// Used in another Thread as an effectively final variable
+			FileReceiver fr = fileReceiver;
 			fileReceiver.init(new Receiver() {
 	
 				@Override
 				public void begin() {
 					synchronized(receivers) {
-						receivers.put(hash, fileReceiver);
+						receivers.put(hash, fr);
 					}
 				}
 				
@@ -358,7 +365,7 @@ public class ServerClient {
 					FileInfo info = new FileInfo(
 						hash, name == null ?
 							UNKNOWN_FILE_NAME : name,
-						senderIP);
+						sender);
 					synchronized(receivers) {
 						receivers.remove(hash);
 					}
@@ -375,14 +382,25 @@ public class ServerClient {
 				}
 	
 				@Override
-				public String getSenderIP() {
-					return senderIP;
+				public String getSender() {
+					return sender;
 				}
 			});
 		} else if(name != null) {
 			synchronized(receivers) {
-				receivers.get(hash).setName(name);
+				fileReceiver = receivers.get(hash);
+				fileReceiver.setName(name);
 			}
 		}
+		// If the list contains the file receiver and it has
+		// all the data correctly set, get the file receiver
+		// from the list. This will be called if the file
+		// receiver has been created and its name is set.
+		if(fileReceiver == null) {
+			synchronized(receivers) {
+				fileReceiver = receivers.get(hash);
+			}
+		}
+		return fileReceiver;
 	}
 }

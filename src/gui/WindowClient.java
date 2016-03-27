@@ -53,7 +53,6 @@ import javafx.stage.Modality;
 import javafx.stage.Stage;
 import sune.ssp.Client;
 import sune.ssp.data.Data;
-import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.Message;
 import sune.ssp.etc.DataList;
@@ -78,7 +77,7 @@ import sune.test.matrix.Matrix;
 
 public class WindowClient {
 	
-	private static final String WINDOW_TITLE 	 = "SSP Client (Simple-Protocol Test; Secure (TSL) & Encrypted (AES 128bit))";
+	private static final String WINDOW_TITLE 	 = "SSP Client (Sune's Simple Protocol)";
 	private static final Image 	WINDOW_ICON  	 = Resource.image("/gui/icon.png");
 	private static final String DEFAULT_ADDR 	 = PortUtils.getLocalIpAddress();
 	private static final int 	DEFAULT_PORT 	 = 2400;
@@ -112,6 +111,7 @@ public class WindowClient {
 	private MenuItem menuItemTerminate;
 	
 	private TableView<ClientTableInfo> tableClients;
+	private List<ClientTableInfo> clientsInfo = new ArrayList<>();
 	
 	private Logger logger = new ThreadLogger() {
 		
@@ -575,16 +575,27 @@ public class WindowClient {
 					FileInfoData fi = (FileInfoData) data;
 					String hash 	= fi.getHash();
 					String name 	= fi.getName();
-					String senderIP = fi.getSenderIP();
+					String sender	= fi.getUUID();
 					long totalSize	= fi.getSize();
 					long waitTime 	= fi.getWaitTime();
 					Waiter waiter 	= dataWaiter.getWaiter();
 					Dialog.setTimeout(waitTime);
+					String username =
+						sender.equals(client.getServerIdentificator()
+											.getUUID()
+											.toString()) ?
+							fi.getSenderIP() : null;
+					for(ClientTableInfo info : clientsInfo) {
+						if(info.getUUID().equals(sender)) {
+							username = info.getUsername();
+							break;
+						}
+					}
 					ButtonType result = Dialog.showQuestionDialog(
 						stage,
 						String.format(
 							"Would you like to receive file %s (%s) from %s?",
-							name, UnitHelper.formatSize(totalSize, 2), senderIP),
+							name, UnitHelper.formatSize(totalSize, 2), username),
 						"Receive file",
 						ButtonType.YES,
 						ButtonType.NO);
@@ -627,26 +638,27 @@ public class WindowClient {
 				String hash 	= fi.getHash();
 				String name 	= fi.getName();
 				long size 		= fi.getSize();
-				String senderIP = fi.getSenderIP();
+				String sender 	= fi.getUUID();
 				FileTableInfo fInfo = new FileTableInfo(
-					senderIP, hash, name, size, TransferType.RECEIVE);
+					sender, hash, name, size, TransferType.RECEIVE);
 				fileInfos.put(hash, fInfo);
 				Platform.runLater(() -> {
 					tableTransfers.getItems().add(fInfo);
 				});
 				logger.logf("File %s will be sent!", name);
-			} else if(data instanceof FileData) {
-				FileData fd	= (FileData) data;
-				String hash = fd.getHash();
-				int length  = fd.getLength();
-				FileTableInfo fileInfo = fileInfos.get(hash);
-				if(fileInfo != null) {
-					byte[] rawData  = fd.getRawData();
-					FileWriter saver = fileSavers.get(hash);
-					saver.write(rawData);
-					fileInfo.update(
-						fileInfo.getCurrentSize() + length);
-				}
+			}
+		});
+		client.addListener(ClientEvent.FILE_DATA_RECEIVED, (data) -> {
+			String hash 	 = data.getHash();
+			int length  	 = data.getLength();
+			byte[] rawData   = data.getRawData();
+			FileWriter saver = fileSavers.get(hash);
+			saver.write(rawData);
+			
+			FileTableInfo fileInfo;
+			if((fileInfo = fileInfos.get(hash)) != null) {
+				fileInfo.update(
+					fileInfo.getCurrentSize() + length);
 				Platform.runLater(() -> {
 					tableTransfers.refresh();
 				});
@@ -742,13 +754,17 @@ public class WindowClient {
 		ObservableList<ClientTableInfo> tableItems
 			= tableClients.getItems();
 		tableItems.clear();
+		clientsInfo.clear();
 		for(Serializable s : list.getData()) {
 			if(s instanceof ServerClientInfo) {
 				ServerClientInfo info
 					= (ServerClientInfo) s;
-				tableItems.add(new ClientTableInfo(
+				ClientTableInfo ci = new ClientTableInfo(
 					info.getIP(),
-					info.getUsername()));
+					info.getUUID(),
+					info.getUsername());
+				tableItems.add(ci);
+				clientsInfo.add(ci);
 			}
 		}
 	}

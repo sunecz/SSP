@@ -11,13 +11,12 @@ public class FilesStorage {
 		private final String hash;
 		private final String name;
 		private final File file;
-		private final int bufferSize;
 		private final long totalSize;
 		
 		private Map<String, FileReader> readers;
 		private FileWriter writer;
 		
-		public StorageFile(String hash, String name, File file, int bufferSize, long totalSize) {
+		public StorageFile(String hash, String name, File file, long totalSize) {
 			if(hash == null || hash.isEmpty()) {
 				throw new IllegalArgumentException(
 					"File hash cannot be null or empty!");
@@ -30,10 +29,13 @@ public class FilesStorage {
 				throw new IllegalArgumentException(
 					"File object cannot be null!");
 			}
+			if(totalSize < 0) {
+				throw new IllegalArgumentException(
+					"Invalid file's total size! Has to be >= 0.");
+			}
 			this.hash		= hash;
 			this.name 		= name;
 			this.file 		= file;
-			this.bufferSize = bufferSize;
 			this.totalSize  = totalSize;
 			this.file.deleteOnExit();
 		}
@@ -61,7 +63,6 @@ public class FilesStorage {
 					name,
 					reader = new FileReader(
 								file,
-								bufferSize,
 								totalSize));
 			return reader;
 		}
@@ -89,16 +90,12 @@ public class FilesStorage {
 		}
 	}
 	
-	private static final int BUFFER_SIZE = 8192;
-	
 	private final String path;
-	private final int bufferSize;
 	private final Map<String, StorageFile> files;
 	
-	protected FilesStorage(String path, int bufferSize) {
-		this.path 		= fixAndEsurePath(path);
-		this.bufferSize = bufferSize;
-		this.files		= new LinkedHashMap<>();
+	protected FilesStorage(String path) {
+		this.path  = fixAndEsurePath(path);
+		this.files = new LinkedHashMap<>();
 	}
 	
 	private static final String fixAndEsurePath(String path) {
@@ -110,7 +107,7 @@ public class FilesStorage {
 	}
 	
 	public static final FilesStorage create(String path) {
-		return new FilesStorage(path, BUFFER_SIZE);
+		return new FilesStorage(path);
 	}
 	
 	public StorageFile createFile(String hash, String name, long totalSize) {
@@ -122,12 +119,16 @@ public class FilesStorage {
 			throw new IllegalArgumentException(
 				"File name cannot be null or empty!");
 		}
+		if(totalSize < 0) {
+			throw new IllegalArgumentException(
+				"Invalid file's total size! Has to be >= 0.");
+		}
 		File file = new File(path + hash + "_" + name);
 		try {
 			if(file.exists()) file.delete();
 			if(file.createNewFile()) {
 				StorageFile sfile = new StorageFile(
-					hash, name, file, bufferSize, totalSize);
+					hash, name, file, totalSize);
 				file.deleteOnExit();
 				synchronized(files) {
 					files.put(hash, sfile);
@@ -157,18 +158,18 @@ public class FilesStorage {
 		return false;
 	}
 	
-	void removedir(File file) {
-		if(!file.exists() || !file.isDirectory())
+	void removedir(File folder) {
+		if(!folder.exists() || !folder.isDirectory())
 			return;
 		try {
-			for(File f : file.listFiles()) {
+			for(File f : folder.listFiles()) {
 				try {
 					if(f.isDirectory()) removedir(f);
 					else 				f.delete();
 				} catch(Exception ex) {
 				}
 			}
-			file.delete();
+			folder.delete();
 		} catch(Exception ex) {
 		}
 	}

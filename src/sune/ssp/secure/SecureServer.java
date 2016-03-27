@@ -46,7 +46,7 @@ public class SecureServer extends Server {
 	
 	@Override
 	protected ServerSocket createSocket(int port) throws IOException {
-		SSLServerSocket socket = SecurityHelper.createServer(port, password);
+		SSLServerSocket socket = SecurityManager.createServer(port, password);
 		socket.setSoTimeout(TIMEOUT);
 		return socket;
 	}

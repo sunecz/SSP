@@ -27,6 +27,7 @@ import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfo;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.FinalData;
+import sune.ssp.data.IdentificatorData;
 import sune.ssp.data.Status;
 import sune.ssp.data.StatusData;
 import sune.ssp.data.TerminationData;
@@ -106,6 +107,7 @@ public class Client {
 	private Connection connection;
 	
 	private Identificator identificator;
+	private Identificator serverIdentificator;
 	
 	private Socket socket;
 	private ObjectInputStream reader;
@@ -235,20 +237,21 @@ public class Client {
 								eventRegistry.call(
 									ClientEvent.IDENTIFICATOR_RECEIVED);
 								send(new ClientInfo(username));
+							} else if(data instanceof IdentificatorData) {
+								IdentificatorData id = (IdentificatorData) data;
+								serverIdentificator  = id.getIdentificator();
 							} else if(data instanceof FileInfoData) {
 								FileInfoData fi = (FileInfoData) data;
 								String hash 	= fi.getHash();
 								String name 	= fi.getName();
 								long size 		= fi.getSize();
-								String senderIP = fi.getSenderIP();
 								long time		= fi.getWaitTime();
 								Waiter waiter 	= new Waiter(time) {
 									
 									@Override
 									public void accepted() {
 										sendWait(new AcceptData(hash));
-										ensureFileReceiver(
-											hash, name, size, senderIP);
+										ensureFileReceiver(hash, name, size);
 									}
 									
 									@Override
@@ -273,12 +276,9 @@ public class Client {
 								FileData fd		= (FileData) data;
 								String hash 	= fd.getHash();
 								long total 		= fd.getTotalSize();
-								String senderIP = fd.getSenderIP();
-								ensureFileReceiver(hash, null, total, senderIP);
-								synchronized(receivers) {
-									FileReceiver receiver = receivers.get(hash);
-									receiver.receive(fd.getRawData());
-								}
+								FileReceiver receiver = ensureFileReceiver(
+									hash, null, total);
+								receiver.receive(fd.getRawData());
 							} else if(data instanceof TerminationData) {
 								TerminationData td = (TerminationData) data;
 								TransferType type  = td.getType();
@@ -399,8 +399,8 @@ public class Client {
 	 * thread as it was called.*/
 	public void connect() {
 		if(running) return;
-		
 		try {
+			// If the username is not set, generate one.
 			if(username == null || username.isEmpty()) {
 				setUsername(generateUsername());
 			}
@@ -449,7 +449,6 @@ public class Client {
 	private void disconnect(boolean sendStatus) {
 		if(!running && (socket != null && socket.isClosed()))
 			return;
-		
 		try {
 			stopWaiters();
 			if(sendStatus)
@@ -462,7 +461,9 @@ public class Client {
 		} catch(Exception ex) {
 			eventRegistry.call(ClientEvent.CANNOT_DISCONNECT);
 		} finally {
-			if(running) disconnect(sendStatus);
+			if(running) {
+				disconnect(sendStatus);
+			}
 		}
 	}
 	
@@ -627,6 +628,14 @@ public class Client {
 		return connection.getDestination().getPort();
 	}
 	
+	public Identificator getIdentificator() {
+		return identificator;
+	}
+	
+	public Identificator getServerIdentificator() {
+		return serverIdentificator;
+	}
+	
 	/**
 	 * Gets information about if this client is secured or not.
 	 * @return True, if the client is secured, otherwise not.*/
@@ -654,20 +663,24 @@ public class Client {
 		eventRegistry.remove(type, listener);
 	}
 	
-	private void ensureFileReceiver(String hash, String name, long size, String senderIP) {
-		boolean contains = false;
+	private FileReceiver ensureFileReceiver(String hash, String name, long size) {
+		FileReceiver fileReceiver = null;
+		boolean contains 		  = false;
 		synchronized(receivers) {
 			contains = receivers.containsKey(hash);
 		}
 		if(!contains) {
-			FileReceiver fileReceiver = new FileReceiver(
-				hash, name, size, senderIP);
+			String uuid  = identificator.getUUID().toString();
+			fileReceiver = new FileReceiver(
+				hash, name, size, uuid);
+			// Used in another Thread as an effectively final variable
+			FileReceiver fr = fileReceiver;
 			fileReceiver.init(new Receiver() {
 	
 				@Override
 				public void begin() {
 					synchronized(receivers) {
-						receivers.put(hash, fileReceiver);
+						receivers.put(hash, fr);
 					}
 				}
 				
@@ -676,7 +689,7 @@ public class Client {
 					FileInfo info = new FileInfo(
 						hash, name == null ?
 							UNKNOWN_FILE_NAME : name,
-						senderIP);
+						uuid);
 					synchronized(receivers) {
 						receivers.remove(hash);
 					}
@@ -686,22 +699,32 @@ public class Client {
 				
 				@Override
 				public void receive(byte[] data) {
-					FileData fileData = new FileData(
-						hash, data, size);
 					eventRegistry.call(
-						ClientEvent.FILE_DATA_RECEIVED, fileData);
+						ClientEvent.FILE_DATA_RECEIVED,
+						new FileData(hash, data, size));
 				}
 	
 				@Override
-				public String getSenderIP() {
-					return senderIP;
+				public String getSender() {
+					return uuid;
 				}
 			});
 		} else if(name != null) {
 			synchronized(receivers) {
-				receivers.get(hash).setName(name);
+				fileReceiver = receivers.get(hash);
+				fileReceiver.setName(name);
 			}
 		}
+		// If the list contains the file receiver and it has
+		// all the data correctly set, get the file receiver
+		// from the list. This will be called if the file
+		// receiver has been created and its name is set.
+		if(fileReceiver == null) {
+			synchronized(receivers) {
+				fileReceiver = receivers.get(hash);
+			}
+		}
+		return fileReceiver;
 	}
 	
 	private void createFileSender(File file) {
@@ -737,7 +760,7 @@ public class Client {
 			fileSender.getHash(),
 			file.getName(),
 			fileSender.getTotalSize(), -1));
-		
+		String uuid   = identificator.getUUID().toString();
 		Sender sender = new Sender() {
 			
 			@Override
@@ -770,8 +793,8 @@ public class Client {
 			}
 			
 			@Override
-			public String getSenderIP() {
-				return getIP();
+			public String getSender() {
+				return uuid;
 			}
 		};
 		count_st.decrementAndGet();

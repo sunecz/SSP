@@ -18,10 +18,15 @@ public class Identificator implements Serializable {
 	private final Object value;
 	
 	public Identificator(Object value) {
-		this(create(value.toString()), value);
+		this(create(value != null ? value.toString() : ""),
+			 value);
 	}
 	
 	public Identificator(UUID uuid, Object value) {
+		if(uuid == null) {
+			throw new IllegalArgumentException(
+				"UUID cannot be null!");
+		}
 		this.uuid  = uuid;
 		this.value = value;
 	}
@@ -87,7 +92,7 @@ public class Identificator implements Serializable {
 	}
 	
 	public boolean equals(UUID id) {
-		return equals(id.toString());
+		return id != null && equals(id.toString());
 	}
 	
 	public boolean equals(String id) {

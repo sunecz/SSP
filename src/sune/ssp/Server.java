@@ -20,6 +20,7 @@ import sune.ssp.data.Data;
 import sune.ssp.data.FileData;
 import sune.ssp.data.FileInfoData;
 import sune.ssp.data.FinalData;
+import sune.ssp.data.IdentificatorData;
 import sune.ssp.data.Message;
 import sune.ssp.data.Status;
 import sune.ssp.data.StatusData;
@@ -127,11 +128,10 @@ public class Server {
 		while(running) {
 			try {
 				Socket socket 	 	= server.accept();
-				String ipAddress 	= socket.getInetAddress().getHostAddress();
 				ServerClient client = createClient(socket);
 				
-				if(canConnect(ipAddress)) {
-					Identificator identificator = client.getIdentificator();
+				Identificator identificator = client.getIdentificator();
+				if(canConnect(identificator.getUUID().toString())) {
 					if(asp != null) {
 						client.setAntiSpamProtection(
 							new AntiSpamProtection(
@@ -192,10 +192,10 @@ public class Server {
 								Status status = ((StatusData) data).getStatus();
 								switch(status) {
 									case DISCONNECTED_BY_USER:
-										String clientIP 	 = data.getSenderIP();
-										ServerClient sclient = getClientByIP(clientIP);
+										String uuid 	 	 = data.getUUID();
+										ServerClient sclient = getClient(uuid);
 										sclient.close();
-										removeClient0(clientIP);
+										removeClient0(uuid);
 										eventRegistry.call(
 											ServerEvent.CLIENT_DISCONNECTED, sclient);
 										break;
@@ -208,10 +208,10 @@ public class Server {
 									try {
 										StorageFile sf  = fstorage.createFile(
 											info.getHash(), info.getName(), info.getSize());
-										String senderIP = info.getSenderIP();
+										String sender = info.getUUID();
 										for(ServerClient sclient : clients.values()) {
-											String receiverIP = sclient.getIP();
-											if(!senderIP.equals(receiverIP)) {
+											String receiver = sclient.getUUID();
+											if(!sender.equals(receiver)) {
 												new Thread(() -> {
 													if(waitTillAccepted(sclient, sf)) {
 														String hash = info.getHash();
@@ -219,13 +219,10 @@ public class Server {
 														synchronized(sending) {
 															sending.put(hash, sending.getOrDefault(hash, 0)+1);
 														}
-														FileReader reader = sf.getReader(receiverIP);
-														
-														byte[] bytes;
-														while(running && !reader.isRead()) {
-															if((bytes = reader.read()) != null) {
-																sclient.send(new FileData(hash, bytes, total));
-															}
+														FileReader reader = sf.getReader(receiver);
+														byte[] bytes = new byte[BUFFER_SIZE];
+														while(running && reader.read(bytes) != -1) {
+															sclient.send(new FileData(hash, bytes, total));
 															Utils.sleep(1);
 														}
 														int current = 0;
@@ -250,7 +247,7 @@ public class Server {
 									StorageFile sfile = fstorage.getFile(fileData.getHash());
 									sfile.getWriter().write(fileData.getRawData());
 								} else {
-									send(data, client.getIP());
+									send(data, client.getUUID());
 								}
 							}
 							eventRegistry.call(ServerEvent.DATA_RECEIVED, data);
@@ -383,16 +380,16 @@ public class Server {
 		}
 	}
 	
-	public void disconnect(String ipAddress) {
-		disconnect(ipAddress, Status.DISCONNECTED_BY_SERVER);
+	public void disconnect(String uuid) {
+		disconnect(uuid, Status.DISCONNECTED_BY_SERVER);
 	}
 	
-	protected void disconnect(String ipAddress, Status status) {
+	protected void disconnect(String uuid, Status status) {
 		synchronized(clients) {
-			if(hasClientByIP(ipAddress)) {
-				ServerClient client = getClientByIP(ipAddress);
+			if(hasClient(uuid)) {
+				ServerClient client = getClient(uuid);
 				client.close(status);
-				removeClient0(ipAddress);
+				removeClient0(uuid);
 				eventRegistry.call(
 					ServerEvent.CLIENT_DISCONNECTED, client);
 			}
@@ -403,16 +400,12 @@ public class Server {
 		send(data, SERVER_NAME, RECEIVE_ALL);
 	}
 	
-	protected void send(Data data, String senderIP) {
-		send(data, senderIP, RECEIVE_ALL);
+	protected void send(Data data, String uuid) {
+		send(data, uuid, RECEIVE_ALL);
 	}
 	
-	protected void send(Data data, String senderIP, String receiver) {
-		addDataToSend(data, senderIP,
-			senderIP.equals(SERVER_NAME) ?
-				identificator.getUUID().toString() :
-				getClientUUID(senderIP),
-			receiver);
+	protected void send(Data data, String uuid, String receiver) {
+		addDataToSend(data, getClientIP(uuid), uuid, receiver);
 	}
 	
 	public void send(Status status) {
@@ -483,7 +476,11 @@ public class Server {
 	}
 	
 	public <T extends Serializable> void sendList(ServerClient client, DataList<T> list) {
-		client.send(list.inject(identificator, client.getIP()));
+		client.send(list.inject(identificator, client.getUUID()));
+	}
+	
+	protected void sendServerIdentificator(ServerClient client) {
+		client.send(new IdentificatorData(identificator));
 	}
 	
 	protected void terminateFor(ServerClient client, String fileHash, boolean self) {
@@ -499,7 +496,7 @@ public class Server {
 					FileSender sender = senders.get(i);
 					if(sender.getHash().equals(fileHash)) {
 						sender.close();
-						FileSender sendercopy = sender.copyFor(client.getIP());
+						FileSender sendercopy = sender.copyFor(client.getUUID());
 						eventRegistry.call(
 							ServerEvent.FILE_SEND_TERMINATED, sendercopy);
 						break;
@@ -509,10 +506,10 @@ public class Server {
 		}
 	}
 	
-	public void terminate(String ipAddress, String fileHash, TransferType type) {
+	public void terminate(String uuid, String fileHash, TransferType type) {
 		switch(type) {
 			case RECEIVE:
-				getClientByIP(ipAddress).terminate(fileHash, type);
+				getClient(uuid).terminate(fileHash, type);
 				break;
 			case SEND:
 				synchronized(senders) {
@@ -561,24 +558,8 @@ public class Server {
 		}
 	}
 	
-	public ServerClient getClientByIP(String ipAddress) {
-		synchronized(clients) {
-			Iterator<ServerClient> it
-				= clients.values().iterator();
-			while(it.hasNext()) {
-				ServerClient c = it.next();
-				if(c.getIP().equals(ipAddress))
-					return c;
-			}
-			return null;
-		}
-	}
-	
-	public String getClientUsername(String ipAddress) {
-		Identificator identificator
-			= getClientIdentificator(ipAddress);
-		return identificator == null ? ipAddress :
-			getClient(identificator.getUUID().toString()).getUsername();
+	public String getClientUsername(String uuid) {
+		return getClient(uuid).getUsername();
 	}
 	
 	public String getClientUUID(String ipAddress) {
@@ -600,41 +581,12 @@ public class Server {
 		}
 	}
 	
-	public boolean hasClientByIP(String ipAddress) {
-		synchronized(clients) {
-			Iterator<ServerClient> it
-				= clients.values().iterator();
-			while(it.hasNext()) {
-				ServerClient c = it.next();
-				if(c.getIP().equals(ipAddress))
-					return true;
-			}
-			return false;
-		}
-	}
-	
 	public boolean removeClient(String uuid) {
 		synchronized(clients) {
 			Iterator<Entry<Identificator, ServerClient>> it
 				= clients.entrySet().iterator();
 			while(it.hasNext()) {
 				if(it.next().getKey().equals(uuid)) {
-					it.remove();
-					return true;
-				}
-			}
-			return false;
-		}
-	}
-	
-	public boolean removeClientByIP(String ipAddress) {
-		synchronized(clients) {
-			Iterator<Entry<Identificator, ServerClient>> it
-				= clients.entrySet().iterator();
-			while(it.hasNext()) {
-				if(it.next().getValue()
-							.getIP()
-							.equals(ipAddress)) {
 					it.remove();
 					return true;
 				}
@@ -696,7 +648,6 @@ public class Server {
 		synchronized(clients) {
 			clients.put(identificator, client);
 		}
-		//sendList(DataListType.CONNECTED_CLIENTS);
 	}
 	
 	void removeClient0(String clientIP) {
@@ -719,11 +670,8 @@ public class Server {
 		}
 	}
 	
-	protected boolean canConnect(String ipAddress) {
-		Identificator identificator
-			= getClientIdentificator(ipAddress);
-		return identificator == null ||
-			!hasClient(identificator.getUUID().toString());
+	protected boolean canConnect(String uuid) {
+		return !hasClient(uuid);
 	}
 	
 	private boolean waitTillAccepted(ServerClient client, StorageFile file) {
@@ -831,6 +779,7 @@ public class Server {
 		}
 		if(accepted.contains(hash)) {
 			List<String> banned = terminatedFiles.ensure(client);
+			String uuid			= identificator.getUUID().toString();
 			Sender sender 		= new Sender() {
 				
 				@Override
@@ -871,8 +820,8 @@ public class Server {
 				}
 				
 				@Override
-				public String getSenderIP() {
-					return SERVER_NAME;
+				public String getSender() {
+					return uuid;
 				}
 			};
 			synchronized(senders) {

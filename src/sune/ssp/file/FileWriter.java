@@ -9,14 +9,20 @@ public class FileWriter {
 	
 	private final File file;
 	private OutputStream writer;
-	private boolean initialized;
 	private int current;
 	private long total;
+	
+	private boolean initialized;
+	private boolean closed;
 	
 	protected FileWriter(File file, long totalSize) {
 		if(file == null) {
 			throw new IllegalArgumentException(
 				"File object cannot be null!");
+		}
+		if(totalSize < 0) {
+			throw new IllegalArgumentException(
+				"Invalid file's total size! Has to be >= 0.");
 		}
 		this.file 	 = file;
 		this.current = 0;
@@ -29,6 +35,7 @@ public class FileWriter {
 	
 	public boolean initialize() {
 		if(initialized) return true;
+		if(closed)		return false;
 		if(writer == null) {
 			try {
 				writer = new BufferedOutputStream(
@@ -59,7 +66,10 @@ public class FileWriter {
 	public boolean close() {
 		if(initialize()) {
 			try {
-				writer.close();
+				if(writer != null) {
+					writer.close();
+					closed = true;
+				}
 				initialized = false;
 				return true;
 			} catch(Exception ex) {
@@ -75,6 +85,10 @@ public class FileWriter {
 	
 	public boolean isWritten() {
 		return current >= total;
+	}
+	
+	public boolean isClosed() {
+		return closed;
 	}
 	
 	public int getCurrent() {

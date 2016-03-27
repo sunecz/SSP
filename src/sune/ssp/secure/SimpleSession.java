@@ -22,12 +22,14 @@ public class SimpleSession implements Session {
 	private final String 	 sessionHash;
 	private final PublicKey  keyPublic;
 	private final PrivateKey keyPrivate;
+	private final SessionKey sessionKey;
 	
-	public SimpleSession(String sessionHash,
-			PublicKey keyPublic, PrivateKey keyPrivate) {
+	protected SimpleSession(String sessionHash,
+			PublicKey keyPublic, PrivateKey keyPrivate, SessionKey sessionKey) {
 		this.sessionHash = sessionHash;
 		this.keyPublic 	 = keyPublic;
 		this.keyPrivate  = keyPrivate;
+		this.sessionKey  = sessionKey;
 	}
 	
 	public static SimpleSession createSession() {
@@ -38,20 +40,13 @@ public class SimpleSession implements Session {
 		return createSession(keySize, DEFAULT_HASH_LENGTH);
 	}
 	
-	public static SimpleSession createSession(SessionKey keySize,
-			int hashLength) {
-		KeyPair keys = CryptRSA.generateKeyPair(keySize.bits());
-		return createSession(
-			keys.getPublic(), keys.getPrivate(),
-			hashLength);
-	}
-	
 	public static SimpleSession createSession(
-			PublicKey keyPublic, PrivateKey keyPrivate,
-			int hashLength) {
+			SessionKey keySize, int hashLength) {
+		KeyPair keys = CryptRSA.generateKeyPair(keySize.bits());
 		return new SimpleSession(
 			Randomizer.randomString(hashLength),
-			keyPublic, keyPrivate);
+			keys.getPublic(), keys.getPrivate(),
+			keySize);
 	}
 	
 	@Override
@@ -72,5 +67,16 @@ public class SimpleSession implements Session {
 	@Override
 	public PublicKey getPublicKey() {
 		return keyPublic;
+	}
+	
+	@Override
+	public int keyBits() {
+		return sessionKey.bits();
+	}
+	
+	@Override
+	public String getAlgorithmName() {
+		// e.g. RSA_2048 => RSA 2048-bit
+		return sessionKey.name().replace('_', ' ') + "-bit";
 	}
 }
